@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AnalysisResult, VocabularyItem, VocabularyCategory, Note } from '../types';
-import { CheckCircle, BookOpen, Layout, Zap, Volume2, Quote, MessageCircle, Sparkles, ArrowRightCircle, AlignLeft, ChevronDown, ChevronUp, Grid, Smartphone, Check, Save, ChevronLeft, ChevronRight, RotateCw, X, XCircle, GraduationCap } from 'lucide-react';
+import { CheckCircle, BookOpen, Layout, Zap, Volume2, Quote, MessageCircle, Sparkles, ArrowRightCircle, AlignLeft, ChevronDown, ChevronUp, Grid, Smartphone, Check, Save, ChevronLeft, ChevronRight, RotateCcw, X, XCircle, GraduationCap, Trophy, Award } from 'lucide-react';
 import { generateSpeech } from '../services/geminiService';
 import WordLookupPopup from './WordLookupPopup';
 import NotesSidebar from './NotesSidebar';
@@ -66,6 +66,11 @@ const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysi
   const [answerResult, setAnswerResult] = useState<'correct' | 'incorrect' | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
   const flashcardInputRef = useRef<HTMLInputElement>(null);
+  
+  // Score tracking state
+  const [correctCount, setCorrectCount] = useState(0);
+  const [incorrectCount, setIncorrectCount] = useState(0);
+  const [showResults, setShowResults] = useState(false);
 
   // Helper function to mask the vocabulary term in text
   const maskTerm = useCallback((text: string, term: string): string => {
@@ -208,6 +213,9 @@ const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysi
     setUserAnswer('');
     setAnswerResult(null);
     setShowAnswer(false);
+    setCorrectCount(0);
+    setIncorrectCount(0);
+    setShowResults(false);
   };
 
   const closeFlashcardMode = () => {
@@ -215,10 +223,28 @@ const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysi
     setUserAnswer('');
     setAnswerResult(null);
     setShowAnswer(false);
+    setCorrectCount(0);
+    setIncorrectCount(0);
+    setShowResults(false);
+  };
+
+  const retryFlashcards = () => {
+    setFlashcardIndex(0);
+    setUserAnswer('');
+    setAnswerResult(null);
+    setShowAnswer(false);
+    setCorrectCount(0);
+    setIncorrectCount(0);
+    setShowResults(false);
   };
 
   const handleFlashcardNext = () => {
-    if (flashcardIndex < data.vocabulary.length - 1) {
+    const totalCards = data.vocabulary.length;
+    const isLastCard = flashcardIndex === totalCards - 1;
+    
+    if (isLastCard) {
+      setShowResults(true);
+    } else {
       setFlashcardIndex(prev => prev + 1);
       setUserAnswer('');
       setAnswerResult(null);
@@ -335,6 +361,14 @@ const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysi
     const isCorrect = checkAnswerMatch(userAnswer, currentItem.term);
     setAnswerResult(isCorrect ? 'correct' : 'incorrect');
     setShowAnswer(true);
+    
+    // Track score
+    if (isCorrect) {
+      setCorrectCount(prev => prev + 1);
+    } else {
+      setIncorrectCount(prev => prev + 1);
+    }
+    
     try {
       await generateSpeech(currentItem.term);
     } catch (error) {
@@ -345,6 +379,7 @@ const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysi
   const handleSkipFlashcard = async () => {
     setAnswerResult('incorrect');
     setShowAnswer(true);
+    setIncorrectCount(prev => prev + 1);
     const currentItem = data.vocabulary[flashcardIndex];
     try {
       await generateSpeech(currentItem.term);
@@ -769,7 +804,99 @@ const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysi
             {flashcardIndex + 1} / {data.vocabulary.length}
           </div>
 
-          {/* Card */}
+          {/* Results Screen */}
+          {showResults ? (
+            <div className="w-full max-w-md text-center">
+              {(() => {
+                const totalCards = data.vocabulary.length;
+                const percentage = totalCards > 0 ? Math.round((correctCount / totalCards) * 100) : 0;
+                const passed = percentage >= 90;
+
+                return (
+                  <div className="bg-white rounded-2xl shadow-2xl p-8 space-y-6">
+                    {/* Result Icon */}
+                    <div className={`mx-auto w-24 h-24 rounded-full flex items-center justify-center ${
+                      passed 
+                        ? 'bg-gradient-to-br from-yellow-400 to-amber-500' 
+                        : 'bg-gradient-to-br from-slate-400 to-slate-500'
+                    }`}>
+                      {passed ? (
+                        <Trophy className="w-12 h-12 text-white animate-bounce" />
+                      ) : (
+                        <Award className="w-12 h-12 text-white" />
+                      )}
+                    </div>
+
+                    {/* Message */}
+                    <div>
+                      <h2 className={`text-3xl font-bold mb-2 ${
+                        passed ? 'text-amber-600' : 'text-slate-700'
+                      }`}>
+                        {passed ? 'Excellent!' : 'Keep Practicing!'}
+                      </h2>
+                      <p className="text-slate-500">
+                        {passed 
+                          ? 'You\'ve mastered this material!' 
+                          : 'You\'re making progress. Try again to reach 90%!'}
+                      </p>
+                    </div>
+
+                    {/* Score */}
+                    <div className="py-4">
+                      <div className="text-5xl font-bold text-slate-800 mb-2">
+                        {percentage}%
+                      </div>
+                      <div className="text-slate-500">
+                        {correctCount} of {totalCards} correct
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          passed 
+                            ? 'bg-gradient-to-r from-amber-400 to-amber-500' 
+                            : 'bg-gradient-to-r from-indigo-400 to-indigo-500'
+                        }`}
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+
+                    {/* 90% threshold indicator */}
+                    {!passed && (
+                      <div className="text-sm text-slate-400">
+                        Need {Math.ceil(totalCards * 0.9) - correctCount} more correct answers to pass (90%)
+                      </div>
+                    )}
+
+                    {/* Buttons */}
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={retryFlashcards}
+                        className="flex-1 py-3 px-4 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <RotateCcw className="w-5 h-5" />
+                        Try Again
+                      </button>
+                      <button
+                        onClick={closeFlashcardMode}
+                        className={`flex-1 py-3 px-4 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 ${
+                          passed 
+                            ? 'bg-amber-500 text-white hover:bg-amber-600' 
+                            : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                        }`}
+                      >
+                        <Check className="w-5 h-5" />
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          ) : (
+          /* Card */
           <div className="w-full max-w-xl">
             {(() => {
               const currentItem = data.vocabulary[flashcardIndex];
@@ -878,21 +1005,16 @@ const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysi
                         </div>
 
                         {/* Next Button */}
-                        {flashcardIndex < data.vocabulary.length - 1 ? (
-                          <button
-                            onClick={handleFlashcardNext}
-                            className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
-                          >
-                            Next Card <ChevronRight className="w-5 h-5" />
-                          </button>
-                        ) : (
-                          <button
-                            onClick={closeFlashcardMode}
-                            className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
-                          >
-                            Complete! <Check className="w-5 h-5" />
-                          </button>
-                        )}
+                        <button
+                          onClick={handleFlashcardNext}
+                          className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+                        >
+                          {flashcardIndex < data.vocabulary.length - 1 ? (
+                            <>Next Card <ChevronRight className="w-5 h-5" /></>
+                          ) : (
+                            <>See Results <ChevronRight className="w-5 h-5" /></>
+                          )}
+                        </button>
                       </div>
                     )}
                   </div>
@@ -900,27 +1022,30 @@ const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysi
               );
             })()}
           </div>
+          )}
 
-          {/* Navigation */}
-          <div className="flex items-center gap-8 mt-8">
-            <button
-              onClick={handleFlashcardPrev}
-              disabled={flashcardIndex === 0}
-              className="p-3 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-            >
-              <ChevronLeft className="w-6 h-6" />
-            </button>
-            <span className="text-sm font-medium text-slate-400">
-              {flashcardIndex + 1} / {data.vocabulary.length}
-            </span>
-            <button
-              onClick={handleFlashcardNext}
-              disabled={flashcardIndex >= data.vocabulary.length - 1}
-              className="p-3 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-            >
-              <ChevronRight className="w-6 h-6" />
-            </button>
-          </div>
+          {/* Navigation - only show when not viewing results */}
+          {!showResults && (
+            <div className="flex items-center gap-8 mt-8">
+              <button
+                onClick={handleFlashcardPrev}
+                disabled={flashcardIndex === 0}
+                className="p-3 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <span className="text-sm font-medium text-slate-400">
+                {flashcardIndex + 1} / {data.vocabulary.length}
+              </span>
+              <button
+                onClick={handleFlashcardNext}
+                disabled={flashcardIndex >= data.vocabulary.length - 1}
+                className="p-3 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

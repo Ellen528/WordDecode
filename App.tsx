@@ -291,6 +291,18 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const updateFlashcardPassed = async (analysisId: string, passed: boolean) => {
+    const newAnalyses = savedAnalyses.map(a => 
+      a.id === analysisId ? { ...a, flashcardPassed: passed } : a
+    );
+    setSavedAnalyses(newAnalyses);
+    localStorage.setItem('nativeNuance_analysisHistory', JSON.stringify(newAnalyses));
+
+    if (isAuthenticated && user) {
+      await dataService.updateFlashcardPassed(user.id, analysisId, passed);
+    }
+  };
+
   const handleNewAnalysis = () => {
     setAnalysisResult(null);
     setInputText('');
@@ -522,6 +534,7 @@ const AppContent: React.FC = () => {
                 onUpdateFolder={updateFolder}
                 onDeleteFolder={deleteFolder}
                 onMoveAnalysisToFolder={moveAnalysisToFolder}
+                onUpdateFlashcardPassed={updateFlashcardPassed}
               />
             )}
 

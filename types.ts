@@ -80,6 +80,7 @@ export interface SavedAnalysis {
   fileName?: string | null;
   notes?: Note[];
   folderId?: string | null;
+  flashcardPassed?: boolean;
 }
 
 export interface AnalysisFolder {
