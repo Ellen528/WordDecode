@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { SavedAnalysis, AnalysisFolder, VocabularyItem } from '../types';
 import { Volume2, Trash2, ChevronLeft, ChevronRight, BookOpen, Calendar, ArrowRight, FolderPlus, Folder, FolderOpen, ChevronDown, ChevronUp, MoreHorizontal, Edit2, X, Check, GripVertical, CheckCircle, XCircle, GraduationCap, Trophy, RotateCcw, Award } from 'lucide-react';
 import { generateSpeech } from '../services/geminiService';
@@ -305,17 +305,8 @@ const HistoryView: React.FC<Props> = ({
     const isLastCard = flashcardIndex === totalCards - 1;
     
     if (isLastCard) {
-      // Show results
+      // Show results (pass check happens in useEffect below)
       setShowResults(true);
-      
-      // Calculate if passed (90%+)
-      const totalAnswered = correctCount + incorrectCount;
-      const percentage = totalAnswered > 0 ? (correctCount / totalAnswered) * 100 : 0;
-      
-      // Update passed status if 90%+ and completed all cards
-      if (percentage >= 90 && totalAnswered === totalCards) {
-        onUpdateFlashcardPassed(practiceAnalysis.id, true);
-      }
     } else {
       setFlashcardIndex(prev => prev + 1);
       setUserAnswer('');
@@ -323,6 +314,20 @@ const HistoryView: React.FC<Props> = ({
       setShowAnswer(false);
     }
   };
+
+  // Check and update passed status when results are shown
+  useEffect(() => {
+    if (showResults && practiceAnalysis) {
+      const totalCards = practiceAnalysis.analysisResult.vocabulary.length;
+      const totalAnswered = correctCount + incorrectCount;
+      const percentage = totalAnswered > 0 ? (correctCount / totalAnswered) * 100 : 0;
+      
+      // Update passed status if 90%+ and completed all cards
+      if (percentage >= 90 && totalAnswered === totalCards && !practiceAnalysis.flashcardPassed) {
+        onUpdateFlashcardPassed(practiceAnalysis.id, true);
+      }
+    }
+  }, [showResults, correctCount, incorrectCount, practiceAnalysis, onUpdateFlashcardPassed]);
 
   const prevCard = () => {
     if (flashcardIndex > 0) {
@@ -813,6 +818,11 @@ const HistoryView: React.FC<Props> = ({
                           ? 'You\'ve mastered this material!' 
                           : 'You\'re making progress. Try again to reach 90%!'}
                       </p>
+                      {passed && (
+                        <p className="text-emerald-600 text-sm font-medium mt-2 flex items-center justify-center gap-1">
+                          <CheckCircle className="w-4 h-4" /> Progress saved!
+                        </p>
+                      )}
                     </div>
 
                     {/* Score */}
