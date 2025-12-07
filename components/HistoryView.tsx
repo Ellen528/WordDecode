@@ -506,9 +506,17 @@ const HistoryView: React.FC<Props> = ({
           {analysis.analysisResult.vocabulary.length > 0 && (
             <button
               onClick={() => openPractice(analysis)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                analysis.flashcardPassed 
+                  ? 'bg-amber-500 text-white hover:bg-amber-600' 
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
+              }`}
             >
-              <GraduationCap className="w-3 h-3" /> Practice
+              {analysis.flashcardPassed ? (
+                <><Trophy className="w-3 h-3" /> Review ✓</>
+              ) : (
+                <><GraduationCap className="w-3 h-3" /> Practice</>
+              )}
             </button>
           )}
                   <button

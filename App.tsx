@@ -723,6 +723,9 @@ const AppContent: React.FC = () => {
                         onGeneratePractice={handleGeneratePractice}
                         onSaveAnalysis={saveAnalysis}
                         initialNotes={currentAnalysisId ? savedAnalyses.find(a => a.id === currentAnalysisId)?.notes || [] : []}
+                        analysisId={currentAnalysisId || undefined}
+                        flashcardPassed={currentAnalysisId ? savedAnalyses.find(a => a.id === currentAnalysisId)?.flashcardPassed : false}
+                        onUpdateFlashcardPassed={updateFlashcardPassed}
                       />
                     </div>
                   </div>

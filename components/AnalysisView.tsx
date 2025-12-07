@@ -11,6 +11,10 @@ interface Props {
   onGeneratePractice: (selected: VocabularyItem[]) => void;
   onSaveAnalysis: (notes: Note[]) => void;
   initialNotes?: Note[];
+  // For tracking flashcard pass status
+  analysisId?: string;
+  flashcardPassed?: boolean;
+  onUpdateFlashcardPassed?: (analysisId: string, passed: boolean) => void;
 }
 
 const CATEGORY_CONFIG: Record<VocabularyCategory, { label: string; color: string; icon: React.ReactNode }> = {
@@ -41,7 +45,15 @@ const CATEGORY_CONFIG: Record<VocabularyCategory, { label: string; color: string
   }
 };
 
-const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysis, initialNotes = [] }) => {
+const AnalysisView: React.FC<Props> = ({ 
+  data, 
+  onGeneratePractice, 
+  onSaveAnalysis, 
+  initialNotes = [],
+  analysisId,
+  flashcardPassed = false,
+  onUpdateFlashcardPassed,
+}) => {
   const [selectedTerms, setSelectedTerms] = useState<Set<string>>(new Set());
   const [playingText, setPlayingText] = useState<string | null>(null);
   const [isTocOpen, setIsTocOpen] = useState(true);
@@ -100,6 +112,20 @@ const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysi
   useEffect(() => {
     setNotes(initialNotes);
   }, [initialNotes]);
+
+  // Check and update passed status when results are shown
+  useEffect(() => {
+    if (showResults && analysisId && onUpdateFlashcardPassed) {
+      const totalCards = data.vocabulary.length;
+      const totalAnswered = correctCount + incorrectCount;
+      const percentage = totalAnswered > 0 ? (correctCount / totalAnswered) * 100 : 0;
+      
+      // Update passed status if 90%+ and completed all cards
+      if (percentage >= 90 && totalAnswered === totalCards && !flashcardPassed) {
+        onUpdateFlashcardPassed(analysisId, true);
+      }
+    }
+  }, [showResults, correctCount, incorrectCount, data.vocabulary.length, analysisId, flashcardPassed, onUpdateFlashcardPassed]);
 
   useEffect(() => {
     const handleSelection = () => {
@@ -523,10 +549,18 @@ const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysi
                 <button
                   onClick={openFlashcardMode}
                   disabled={data.vocabulary.length === 0}
-                  className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
+                  className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed ${
+                    flashcardPassed 
+                      ? 'bg-amber-500 text-white hover:bg-amber-600' 
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                  }`}
                 >
-                  <GraduationCap className="w-4 h-4" />
-                  Practice Flashcards
+                  {flashcardPassed ? (
+                    <Trophy className="w-4 h-4" />
+                  ) : (
+                    <GraduationCap className="w-4 h-4" />
+                  )}
+                  {flashcardPassed ? 'Review Flashcards ✓' : 'Practice Flashcards'}
                 </button>
                 <button
                   onClick={handleSaveAnalysisClick}
@@ -871,6 +905,11 @@ const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysi
                           ? 'You\'ve mastered this material!' 
                           : 'You\'re making progress. Try again to reach 90%!'}
                       </p>
+                      {passed && analysisId && (
+                        <p className="text-emerald-600 text-sm font-medium mt-2 flex items-center justify-center gap-1">
+                          <CheckCircle className="w-4 h-4" /> Progress saved!
+                        </p>
+                      )}
                     </div>
 
                     {/* Score */}
