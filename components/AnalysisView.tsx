@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AnalysisResult, VocabularyItem, VocabularyCategory, Note } from '../types';
-import { CheckCircle, BookOpen, Layout, Zap, Volume2, Quote, MessageCircle, Sparkles, ArrowRightCircle, AlignLeft, ChevronDown, ChevronUp, Grid, Smartphone, Check, Save, ChevronLeft, ChevronRight, RotateCcw, X, XCircle, GraduationCap, Trophy, Award } from 'lucide-react';
+import { CheckCircle, BookOpen, Layout, Zap, Volume2, Quote, MessageCircle, Sparkles, ArrowRightCircle, AlignLeft, ChevronDown, ChevronUp, Grid, Smartphone, Check, Save, ChevronLeft, ChevronRight, RotateCcw, RotateCw, X, XCircle, GraduationCap, Trophy, Award } from 'lucide-react';
 import { generateSpeech } from '../services/geminiService';
 import WordLookupPopup from './WordLookupPopup';
 import NotesSidebar from './NotesSidebar';
