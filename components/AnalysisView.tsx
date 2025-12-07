@@ -1054,7 +1054,7 @@ const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysi
               );
             })()}
           </div>
-          )}
+          }
 
           {/* Navigation - only show when not viewing results */}
           {!showResults && (
