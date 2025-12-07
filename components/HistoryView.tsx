@@ -1014,7 +1014,7 @@ const HistoryView: React.FC<Props> = ({
               );
             })()}
           </div>
-          }
+          )}
 
           {/* Navigation - only show when not viewing results */}
           {!showResults && (
