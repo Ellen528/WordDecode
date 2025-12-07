@@ -262,7 +262,20 @@ const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysi
   };
 
   // Smart answer matching that handles variations like:
-  // "put (something) on the back burner" ≈ "put on the back burner" ≈ "put it on the back burner"
+  // "overstepped her bound" ≈ "overstep the bound" ≈ "overstep bound"
+  
+  // Simple stemming: remove common verb endings to match tenses
+  const stemWord = useCallback((word: string): string => {
+    if (word.length < 4) return word;
+    // Handle common verb endings: -ed, -ing, -s, -es
+    if (word.endsWith('ied')) return word.slice(0, -3) + 'y'; // carried → carry
+    if (word.endsWith('ed') && word.length > 4) return word.slice(0, -2); // overstepped → overstep, but not "red"
+    if (word.endsWith('ing') && word.length > 5) return word.slice(0, -3); // running → runn → will match run
+    if (word.endsWith('es') && word.length > 4) return word.slice(0, -2); // watches → watch
+    if (word.endsWith('s') && !word.endsWith('ss') && word.length > 3) return word.slice(0, -1); // runs → run
+    return word;
+  }, []);
+
   const normalizeForComparison = useCallback((text: string): string => {
     return text
       .toLowerCase()
@@ -282,8 +295,12 @@ const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysi
       .replace(/\bsth\b/gi, '')
       .replace(/\bsb\b/gi, '')
       .replace(/\bsmth\b/gi, '')
-      // Remove articles that might be added/omitted
+      // Remove articles
       .replace(/\b(a|an|the)\b/gi, '')
+      // Remove pronouns (her, his, their, my, your, its, our, one's)
+      .replace(/\b(her|his|their|my|your|its|our|one's)\b/gi, '')
+      // Remove common filler words
+      .replace(/\b(it|to|of|in|on|at|for|with|by)\b/gi, '')
       // Clean up whitespace
       .replace(/\s+/g, ' ')
       .trim();
@@ -325,6 +342,20 @@ const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysi
     return (longer.length - distance) / longer.length;
   };
 
+  // Check if two words match (considering stems)
+  const wordsMatch = useCallback((word1: string, word2: string): boolean => {
+    if (word1 === word2) return true;
+    const stem1 = stemWord(word1);
+    const stem2 = stemWord(word2);
+    // Check stem match
+    if (stem1 === stem2) return true;
+    // Check if one contains the other (for partial matches)
+    if (stem1.length >= 3 && stem2.length >= 3) {
+      if (stem1.includes(stem2) || stem2.includes(stem1)) return true;
+    }
+    return false;
+  }, [stemWord]);
+
   const checkAnswerMatch = useCallback((userInput: string, correctTerm: string): boolean => {
     const normalizedUser = normalizeForComparison(userInput);
     const normalizedTerm = normalizeForComparison(correctTerm);
@@ -332,28 +363,29 @@ const AnalysisView: React.FC<Props> = ({ data, onGeneratePractice, onSaveAnalysi
     // Exact match after normalization
     if (normalizedUser === normalizedTerm) return true;
     
-    // Check if user answer contains all key words from the term
+    // Get core words (ignore very short words)
     const termWords = normalizedTerm.split(' ').filter(w => w.length > 2);
     const userWords = normalizedUser.split(' ').filter(w => w.length > 2);
     
-    // All significant words from term should be in user's answer
+    // If no significant words to compare, check similarity
+    if (termWords.length === 0 || userWords.length === 0) {
+      return calculateSimilarity(normalizedUser, normalizedTerm) >= 0.7;
+    }
+    
+    // Check if user answer contains all key words from the term (using stem matching)
     const allTermWordsPresent = termWords.every(tw => 
-      userWords.some(uw => uw === tw || uw.includes(tw) || tw.includes(uw))
+      userWords.some(uw => wordsMatch(tw, uw))
     );
     
-    // User shouldn't have added too many extra words (max 2 extra words like "it", "sth")
-    const extraWords = userWords.filter(uw => 
-      !termWords.some(tw => uw === tw || uw.includes(tw) || tw.includes(uw))
-    );
+    // If all core words match, it's correct
+    if (allTermWordsPresent) return true;
     
-    if (allTermWordsPresent && extraWords.length <= 2) return true;
-    
-    // Fuzzy match: allow for minor typos using Levenshtein-like similarity
+    // Fuzzy match: allow for minor typos using similarity
     const similarity = calculateSimilarity(normalizedUser, normalizedTerm);
-    if (similarity >= 0.85) return true;
+    if (similarity >= 0.75) return true;
     
     return false;
-  }, [normalizeForComparison]);
+  }, [normalizeForComparison, wordsMatch]);
 
   const handleCheckFlashcardAnswer = async () => {
     if (!userAnswer.trim()) return;
