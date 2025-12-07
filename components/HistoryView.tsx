@@ -114,11 +114,105 @@ const HistoryView: React.FC<Props> = ({
     setShowAnswer(false);
   };
 
+  // Smart answer matching that handles variations like:
+  // "put (something) on the back burner" ≈ "put on the back burner" ≈ "put it on the back burner"
+  const normalizeForComparison = useCallback((text: string): string => {
+    return text
+      .toLowerCase()
+      .trim()
+      // Remove common placeholder patterns
+      .replace(/\(something\)/gi, '')
+      .replace(/\(sth\)/gi, '')
+      .replace(/\(someone\)/gi, '')
+      .replace(/\(sb\)/gi, '')
+      .replace(/\(somebody\)/gi, '')
+      .replace(/\(one\)/gi, '')
+      .replace(/\(one's\)/gi, '')
+      .replace(/\(somewhere\)/gi, '')
+      .replace(/\(somehow\)/gi, '')
+      .replace(/\([^)]*\)/g, '') // Remove any remaining parenthetical content
+      // Normalize common variations
+      .replace(/\bsth\b/gi, '')
+      .replace(/\bsb\b/gi, '')
+      .replace(/\bsmth\b/gi, '')
+      // Remove articles that might be added/omitted
+      .replace(/\b(a|an|the)\b/gi, '')
+      // Clean up whitespace
+      .replace(/\s+/g, ' ')
+      .trim();
+  }, []);
+
+  const checkAnswerMatch = useCallback((userInput: string, correctTerm: string): boolean => {
+    const normalizedUser = normalizeForComparison(userInput);
+    const normalizedTerm = normalizeForComparison(correctTerm);
+    
+    // Exact match after normalization
+    if (normalizedUser === normalizedTerm) return true;
+    
+    // Check if user answer contains all key words from the term
+    const termWords = normalizedTerm.split(' ').filter(w => w.length > 2);
+    const userWords = normalizedUser.split(' ').filter(w => w.length > 2);
+    
+    // All significant words from term should be in user's answer
+    const allTermWordsPresent = termWords.every(tw => 
+      userWords.some(uw => uw === tw || uw.includes(tw) || tw.includes(uw))
+    );
+    
+    // User shouldn't have added too many extra words (max 2 extra words like "it", "sth")
+    const extraWords = userWords.filter(uw => 
+      !termWords.some(tw => uw === tw || uw.includes(tw) || tw.includes(uw))
+    );
+    
+    if (allTermWordsPresent && extraWords.length <= 2) return true;
+    
+    // Fuzzy match: allow for minor typos using Levenshtein-like similarity
+    const similarity = calculateSimilarity(normalizedUser, normalizedTerm);
+    if (similarity >= 0.85) return true;
+    
+    return false;
+  }, [normalizeForComparison]);
+
+  // Simple similarity calculation (0 to 1)
+  const calculateSimilarity = (str1: string, str2: string): number => {
+    if (str1 === str2) return 1;
+    if (!str1 || !str2) return 0;
+    
+    const longer = str1.length > str2.length ? str1 : str2;
+    const shorter = str1.length > str2.length ? str2 : str1;
+    
+    if (longer.length === 0) return 1;
+    
+    // Simple Levenshtein distance
+    const matrix: number[][] = [];
+    for (let i = 0; i <= shorter.length; i++) {
+      matrix[i] = [i];
+    }
+    for (let j = 0; j <= longer.length; j++) {
+      matrix[0][j] = j;
+    }
+    for (let i = 1; i <= shorter.length; i++) {
+      for (let j = 1; j <= longer.length; j++) {
+        if (shorter[i-1] === longer[j-1]) {
+          matrix[i][j] = matrix[i-1][j-1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i-1][j-1] + 1,
+            matrix[i][j-1] + 1,
+            matrix[i-1][j] + 1
+          );
+        }
+      }
+    }
+    
+    const distance = matrix[shorter.length][longer.length];
+    return (longer.length - distance) / longer.length;
+  };
+
   const handleCheckAnswer = async () => {
     if (!userAnswer.trim() || !practiceAnalysis) return;
     
     const currentItem = practiceAnalysis.analysisResult.vocabulary[flashcardIndex];
-    const isCorrect = userAnswer.trim().toLowerCase() === currentItem.term.toLowerCase();
+    const isCorrect = checkAnswerMatch(userAnswer, currentItem.term);
     
     setAnswerResult(isCorrect ? 'correct' : 'incorrect');
     setShowAnswer(true);
