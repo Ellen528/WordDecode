@@ -1,6 +1,6 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { SavedAnalysis, AnalysisFolder, VocabularyItem } from '../types';
-import { Volume2, Trash2, ChevronLeft, ChevronRight, BookOpen, Calendar, ArrowRight, FolderPlus, Folder, FolderOpen, ChevronDown, ChevronUp, MoreHorizontal, Edit2, X, Check, GripVertical, CheckCircle, XCircle, GraduationCap } from 'lucide-react';
+import { Volume2, Trash2, ChevronLeft, ChevronRight, BookOpen, Calendar, ArrowRight, FolderPlus, Folder, FolderOpen, ChevronDown, ChevronUp, MoreHorizontal, Edit2, X, Check, GripVertical, CheckCircle, XCircle, GraduationCap, Trophy, RotateCcw, Award } from 'lucide-react';
 import { generateSpeech } from '../services/geminiService';
 
 interface Props {
@@ -12,6 +12,7 @@ interface Props {
   onUpdateFolder: (folder: AnalysisFolder) => void;
   onDeleteFolder: (folderId: string) => void;
   onMoveAnalysisToFolder: (analysisId: string, folderId: string | null) => void;
+  onUpdateFlashcardPassed: (analysisId: string, passed: boolean) => void;
 }
 
 const FOLDER_COLORS = [
@@ -36,6 +37,7 @@ const HistoryView: React.FC<Props> = ({
   onUpdateFolder,
   onDeleteFolder,
   onMoveAnalysisToFolder,
+  onUpdateFlashcardPassed,
 }) => {
   const [playingId, setPlayingId] = useState<string | null>(null);
 
@@ -46,6 +48,11 @@ const HistoryView: React.FC<Props> = ({
   const [answerResult, setAnswerResult] = useState<'correct' | 'incorrect' | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Score tracking state
+  const [correctCount, setCorrectCount] = useState(0);
+  const [incorrectCount, setIncorrectCount] = useState(0);
+  const [showResults, setShowResults] = useState(false);
 
   // Folder state
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -105,6 +112,9 @@ const HistoryView: React.FC<Props> = ({
     setUserAnswer('');
     setAnswerResult(null);
     setShowAnswer(false);
+    setCorrectCount(0);
+    setIncorrectCount(0);
+    setShowResults(false);
   };
 
   const closePractice = () => {
@@ -112,16 +122,162 @@ const HistoryView: React.FC<Props> = ({
     setUserAnswer('');
     setAnswerResult(null);
     setShowAnswer(false);
+    setCorrectCount(0);
+    setIncorrectCount(0);
+    setShowResults(false);
+  };
+
+  const retryPractice = () => {
+    setFlashcardIndex(0);
+    setUserAnswer('');
+    setAnswerResult(null);
+    setShowAnswer(false);
+    setCorrectCount(0);
+    setIncorrectCount(0);
+    setShowResults(false);
+  };
+
+  // Smart answer matching that handles variations like:
+  // "overstepped her bound" ≈ "overstep the bound" ≈ "overstep bound"
+  
+  // Simple stemming: remove common verb endings to match tenses
+  const stemWord = useCallback((word: string): string => {
+    if (word.length < 4) return word;
+    // Handle common verb endings: -ed, -ing, -s, -es
+    if (word.endsWith('ied')) return word.slice(0, -3) + 'y'; // carried → carry
+    if (word.endsWith('ed') && word.length > 4) return word.slice(0, -2); // overstepped → overstep, but not "red"
+    if (word.endsWith('ing') && word.length > 5) return word.slice(0, -3); // running → runn → will match run
+    if (word.endsWith('es') && word.length > 4) return word.slice(0, -2); // watches → watch
+    if (word.endsWith('s') && !word.endsWith('ss') && word.length > 3) return word.slice(0, -1); // runs → run
+    return word;
+  }, []);
+
+  const normalizeForComparison = useCallback((text: string): string => {
+    return text
+      .toLowerCase()
+      .trim()
+      // Remove common placeholder patterns
+      .replace(/\(something\)/gi, '')
+      .replace(/\(sth\)/gi, '')
+      .replace(/\(someone\)/gi, '')
+      .replace(/\(sb\)/gi, '')
+      .replace(/\(somebody\)/gi, '')
+      .replace(/\(one\)/gi, '')
+      .replace(/\(one's\)/gi, '')
+      .replace(/\(somewhere\)/gi, '')
+      .replace(/\(somehow\)/gi, '')
+      .replace(/\([^)]*\)/g, '') // Remove any remaining parenthetical content
+      // Normalize common variations
+      .replace(/\bsth\b/gi, '')
+      .replace(/\bsb\b/gi, '')
+      .replace(/\bsmth\b/gi, '')
+      // Remove articles
+      .replace(/\b(a|an|the)\b/gi, '')
+      // Remove pronouns (her, his, their, my, your, its, our, one's)
+      .replace(/\b(her|his|their|my|your|its|our|one's)\b/gi, '')
+      // Remove common filler words
+      .replace(/\b(it|to|of|in|on|at|for|with|by)\b/gi, '')
+      // Clean up whitespace
+      .replace(/\s+/g, ' ')
+      .trim();
+  }, []);
+
+  // Check if two words match (considering stems)
+  const wordsMatch = useCallback((word1: string, word2: string): boolean => {
+    if (word1 === word2) return true;
+    const stem1 = stemWord(word1);
+    const stem2 = stemWord(word2);
+    // Check stem match
+    if (stem1 === stem2) return true;
+    // Check if one contains the other (for partial matches)
+    if (stem1.length >= 3 && stem2.length >= 3) {
+      if (stem1.includes(stem2) || stem2.includes(stem1)) return true;
+    }
+    return false;
+  }, [stemWord]);
+
+  const checkAnswerMatch = useCallback((userInput: string, correctTerm: string): boolean => {
+    const normalizedUser = normalizeForComparison(userInput);
+    const normalizedTerm = normalizeForComparison(correctTerm);
+    
+    // Exact match after normalization
+    if (normalizedUser === normalizedTerm) return true;
+    
+    // Get core words (ignore very short words)
+    const termWords = normalizedTerm.split(' ').filter(w => w.length > 2);
+    const userWords = normalizedUser.split(' ').filter(w => w.length > 2);
+    
+    // If no significant words to compare, check similarity
+    if (termWords.length === 0 || userWords.length === 0) {
+      return calculateSimilarity(normalizedUser, normalizedTerm) >= 0.7;
+    }
+    
+    // Check if user answer contains all key words from the term (using stem matching)
+    const allTermWordsPresent = termWords.every(tw => 
+      userWords.some(uw => wordsMatch(tw, uw))
+    );
+    
+    // If all core words match, it's correct
+    if (allTermWordsPresent) return true;
+    
+    // Fuzzy match: allow for minor typos using similarity
+    const similarity = calculateSimilarity(normalizedUser, normalizedTerm);
+    if (similarity >= 0.75) return true;
+    
+    return false;
+  }, [normalizeForComparison, wordsMatch]);
+
+  // Simple similarity calculation (0 to 1)
+  const calculateSimilarity = (str1: string, str2: string): number => {
+    if (str1 === str2) return 1;
+    if (!str1 || !str2) return 0;
+    
+    const longer = str1.length > str2.length ? str1 : str2;
+    const shorter = str1.length > str2.length ? str2 : str1;
+    
+    if (longer.length === 0) return 1;
+    
+    // Simple Levenshtein distance
+    const matrix: number[][] = [];
+    for (let i = 0; i <= shorter.length; i++) {
+      matrix[i] = [i];
+    }
+    for (let j = 0; j <= longer.length; j++) {
+      matrix[0][j] = j;
+    }
+    for (let i = 1; i <= shorter.length; i++) {
+      for (let j = 1; j <= longer.length; j++) {
+        if (shorter[i-1] === longer[j-1]) {
+          matrix[i][j] = matrix[i-1][j-1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i-1][j-1] + 1,
+            matrix[i][j-1] + 1,
+            matrix[i-1][j] + 1
+          );
+        }
+      }
+    }
+    
+    const distance = matrix[shorter.length][longer.length];
+    return (longer.length - distance) / longer.length;
   };
 
   const handleCheckAnswer = async () => {
     if (!userAnswer.trim() || !practiceAnalysis) return;
     
     const currentItem = practiceAnalysis.analysisResult.vocabulary[flashcardIndex];
-    const isCorrect = userAnswer.trim().toLowerCase() === currentItem.term.toLowerCase();
+    const isCorrect = checkAnswerMatch(userAnswer, currentItem.term);
     
     setAnswerResult(isCorrect ? 'correct' : 'incorrect');
     setShowAnswer(true);
+    
+    // Track score
+    if (isCorrect) {
+      setCorrectCount(prev => prev + 1);
+    } else {
+      setIncorrectCount(prev => prev + 1);
+    }
     
     try {
       await generateSpeech(currentItem.term);
@@ -135,6 +291,7 @@ const HistoryView: React.FC<Props> = ({
     const currentItem = practiceAnalysis.analysisResult.vocabulary[flashcardIndex];
     setShowAnswer(true);
     setAnswerResult('incorrect');
+    setIncorrectCount(prev => prev + 1);
     try {
       await generateSpeech(currentItem.term);
     } catch (error) {
@@ -144,13 +301,33 @@ const HistoryView: React.FC<Props> = ({
 
   const nextCard = () => {
     if (!practiceAnalysis) return;
-    if (flashcardIndex < practiceAnalysis.analysisResult.vocabulary.length - 1) {
+    const totalCards = practiceAnalysis.analysisResult.vocabulary.length;
+    const isLastCard = flashcardIndex === totalCards - 1;
+    
+    if (isLastCard) {
+      // Show results (pass check happens in useEffect below)
+      setShowResults(true);
+    } else {
       setFlashcardIndex(prev => prev + 1);
       setUserAnswer('');
       setAnswerResult(null);
       setShowAnswer(false);
     }
   };
+
+  // Check and update passed status when results are shown
+  useEffect(() => {
+    if (showResults && practiceAnalysis) {
+      const totalCards = practiceAnalysis.analysisResult.vocabulary.length;
+      const totalAnswered = correctCount + incorrectCount;
+      const percentage = totalAnswered > 0 ? (correctCount / totalAnswered) * 100 : 0;
+      
+      // Update passed status if 90%+ and completed all cards
+      if (percentage >= 90 && totalAnswered === totalCards && !practiceAnalysis.flashcardPassed) {
+        onUpdateFlashcardPassed(practiceAnalysis.id, true);
+      }
+    }
+  }, [showResults, correctCount, incorrectCount, practiceAnalysis, onUpdateFlashcardPassed]);
 
   const prevCard = () => {
     if (flashcardIndex > 0) {
@@ -169,7 +346,7 @@ const HistoryView: React.FC<Props> = ({
         next.delete(folderId);
       } else {
         next.add(folderId);
-      }
+  }
       return next;
     });
   };
@@ -283,51 +460,67 @@ const HistoryView: React.FC<Props> = ({
         <div className="flex items-center gap-3">
           <div className="text-slate-300 group-hover:text-slate-400 transition-colors">
             <GripVertical className="w-4 h-4" />
-          </div>
+                  </div>
           <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold uppercase tracking-wider">
-            {analysis.sourceType}
-          </span>
-          <span className="flex items-center gap-1 text-xs text-slate-400">
-            <Calendar className="w-3 h-3" />
-            {new Date(analysis.date).toLocaleDateString()}
-          </span>
-        </div>
-        <button
-          onClick={() => onRemoveAnalysis(analysis.id)}
+                      {analysis.sourceType}
+                    </span>
+                    <span className="flex items-center gap-1 text-xs text-slate-400">
+                      <Calendar className="w-3 h-3" />
+                      {new Date(analysis.date).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => onRemoveAnalysis(analysis.id)}
           className="text-slate-300 hover:text-red-500 transition-colors p-1.5 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100"
-          title="Remove analysis"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
+                    title="Remove analysis"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+      <div className="flex items-center gap-2 mb-2">
+        <h3 className="text-lg font-serif font-bold text-slate-900 line-clamp-1 flex-1">
+          {analysis.fileName || 'Text Analysis'}
+        </h3>
+        {analysis.flashcardPassed && (
+          <span className="flex-shrink-0 flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-bold" title="Flashcard test passed!">
+            <Trophy className="w-3 h-3" />
+            Passed
+          </span>
+        )}
       </div>
 
-      <h3 className="text-lg font-serif font-bold text-slate-900 mb-2 line-clamp-1">
-        {analysis.fileName || 'Text Analysis'}
-      </h3>
-
       <p className="text-slate-600 text-sm mb-4 line-clamp-2">
-        {analysis.analysisResult.summary}
-      </p>
+                  {analysis.analysisResult.summary}
+                </p>
 
       <div className="flex items-center justify-between pt-3 border-t border-slate-100">
         <div className="flex gap-3 text-sm text-slate-500">
-          <span className="flex items-center gap-1">
+                    <span className="flex items-center gap-1">
             <BookOpen className="w-3.5 h-3.5" />
-            {analysis.analysisResult.vocabulary.length} words
-          </span>
-        </div>
+                      {analysis.analysisResult.vocabulary.length} words
+                    </span>
+                  </div>
 
         <div className="flex gap-2">
           {analysis.analysisResult.vocabulary.length > 0 && (
             <button
               onClick={() => openPractice(analysis)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                analysis.flashcardPassed 
+                  ? 'bg-amber-500 text-white hover:bg-amber-600' 
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
+              }`}
             >
-              <GraduationCap className="w-3 h-3" /> Practice
+              {analysis.flashcardPassed ? (
+                <><Trophy className="w-3 h-3" /> Review ✓</>
+              ) : (
+                <><GraduationCap className="w-3 h-3" /> Practice</>
+              )}
             </button>
           )}
-          <button
-            onClick={() => onLoadAnalysis(analysis)}
+                  <button
+                    onClick={() => onLoadAnalysis(analysis)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-medium hover:bg-slate-800 transition-colors"
           >
             Load <ArrowRight className="w-3 h-3" />
@@ -598,7 +791,104 @@ const HistoryView: React.FC<Props> = ({
             {practiceAnalysis.fileName || 'Text Analysis'}
           </div>
 
-          {/* Card */}
+          {/* Results Screen */}
+          {showResults ? (
+            <div className="w-full max-w-md text-center">
+              {(() => {
+                const totalCards = practiceAnalysis.analysisResult.vocabulary.length;
+                const percentage = totalCards > 0 ? Math.round((correctCount / totalCards) * 100) : 0;
+                const passed = percentage >= 90;
+
+                return (
+                  <div className="bg-white rounded-2xl shadow-2xl p-8 space-y-6">
+                    {/* Result Icon */}
+                    <div className={`mx-auto w-24 h-24 rounded-full flex items-center justify-center ${
+                      passed 
+                        ? 'bg-gradient-to-br from-yellow-400 to-amber-500' 
+                        : 'bg-gradient-to-br from-slate-400 to-slate-500'
+                    }`}>
+                      {passed ? (
+                        <Trophy className="w-12 h-12 text-white animate-bounce" />
+                      ) : (
+                        <Award className="w-12 h-12 text-white" />
+                      )}
+                    </div>
+
+                    {/* Message */}
+                    <div>
+                      <h2 className={`text-3xl font-bold mb-2 ${
+                        passed ? 'text-amber-600' : 'text-slate-700'
+                      }`}>
+                        {passed ? 'Excellent!' : 'Keep Practicing!'}
+                      </h2>
+                      <p className="text-slate-500">
+                        {passed 
+                          ? 'You\'ve mastered this material!' 
+                          : 'You\'re making progress. Try again to reach 90%!'}
+                      </p>
+                      {passed && (
+                        <p className="text-emerald-600 text-sm font-medium mt-2 flex items-center justify-center gap-1">
+                          <CheckCircle className="w-4 h-4" /> Progress saved!
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Score */}
+                    <div className="py-4">
+                      <div className="text-5xl font-bold text-slate-800 mb-2">
+                        {percentage}%
+                      </div>
+                      <div className="text-slate-500">
+                        {correctCount} of {totalCards} correct
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          passed 
+                            ? 'bg-gradient-to-r from-amber-400 to-amber-500' 
+                            : 'bg-gradient-to-r from-indigo-400 to-indigo-500'
+                        }`}
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+
+                    {/* 90% threshold indicator */}
+                    {!passed && (
+                      <div className="text-sm text-slate-400">
+                        Need {Math.ceil(totalCards * 0.9) - correctCount} more correct answers to pass (90%)
+                      </div>
+                    )}
+
+                    {/* Buttons */}
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={retryPractice}
+                        className="flex-1 py-3 px-4 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <RotateCcw className="w-5 h-5" />
+                        Try Again
+                      </button>
+                      <button
+                        onClick={closePractice}
+                        className={`flex-1 py-3 px-4 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 ${
+                          passed 
+                            ? 'bg-amber-500 text-white hover:bg-amber-600' 
+                            : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                        }`}
+                      >
+                        <Check className="w-5 h-5" />
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          ) : (
+          /* Card */
           <div className="w-full max-w-xl">
             {(() => {
               const currentItem = practiceAnalysis.analysisResult.vocabulary[flashcardIndex];
@@ -702,26 +992,21 @@ const HistoryView: React.FC<Props> = ({
                               }`}
                             >
                               <Volume2 className="w-5 h-5" />
-                            </button>
-                          </div>
-                        </div>
+                  </button>
+                </div>
+              </div>
 
                         {/* Next Button */}
-                        {flashcardIndex < practiceAnalysis.analysisResult.vocabulary.length - 1 ? (
-                          <button
-                            onClick={nextCard}
-                            className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
-                          >
-                            Next Card <ChevronRight className="w-5 h-5" />
-                          </button>
-                        ) : (
-                          <button
-                            onClick={closePractice}
-                            className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
-                          >
-                            Complete! <Check className="w-5 h-5" />
-                          </button>
-                        )}
+                        <button
+                          onClick={nextCard}
+                          className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+                        >
+                          {flashcardIndex < practiceAnalysis.analysisResult.vocabulary.length - 1 ? (
+                            <>Next Card <ChevronRight className="w-5 h-5" /></>
+                          ) : (
+                            <>See Results <ChevronRight className="w-5 h-5" /></>
+                          )}
+                        </button>
                       </div>
                     )}
                   </div>
@@ -729,27 +1014,30 @@ const HistoryView: React.FC<Props> = ({
               );
             })()}
           </div>
+          )}
 
-          {/* Navigation */}
-          <div className="flex items-center gap-8 mt-8">
-            <button
-              onClick={prevCard}
-              disabled={flashcardIndex === 0}
-              className="p-3 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-            >
-              <ChevronLeft className="w-6 h-6" />
-            </button>
-            <span className="text-sm font-medium text-slate-400">
-              {flashcardIndex + 1} / {practiceAnalysis.analysisResult.vocabulary.length}
-            </span>
-            <button
-              onClick={nextCard}
-              disabled={flashcardIndex >= practiceAnalysis.analysisResult.vocabulary.length - 1}
-              className="p-3 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-            >
-              <ChevronRight className="w-6 h-6" />
-            </button>
-          </div>
+          {/* Navigation - only show when not viewing results */}
+          {!showResults && (
+            <div className="flex items-center gap-8 mt-8">
+              <button
+                onClick={prevCard}
+                disabled={flashcardIndex === 0}
+                className="p-3 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <span className="text-sm font-medium text-slate-400">
+                {flashcardIndex + 1} / {practiceAnalysis.analysisResult.vocabulary.length}
+              </span>
+              <button
+                onClick={nextCard}
+                disabled={flashcardIndex >= practiceAnalysis.analysisResult.vocabulary.length - 1}
+                className="p-3 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

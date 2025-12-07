@@ -12,6 +12,7 @@ interface DbSavedAnalysis {
   file_name: string | null;
   notes: object | null;
   folder_id: string | null;
+  flashcard_passed: boolean | null;
   created_at: string;
 }
 
@@ -53,6 +54,7 @@ const dbToAnalysis = (row: DbSavedAnalysis): SavedAnalysis => ({
   fileName: row.file_name,
   notes: (row.notes as Note[]) || [],
   folderId: row.folder_id || null,
+  flashcardPassed: row.flashcard_passed || false,
 });
 
 const dbToFolder = (row: DbAnalysisFolder): AnalysisFolder => ({
@@ -120,6 +122,7 @@ export const dataService = {
         file_name: analysis.fileName || null,
         notes: analysis.notes || [],
         folder_id: analysis.folderId || null,
+        flashcard_passed: analysis.flashcardPassed || false,
       })
       .select()
       .single();
@@ -154,6 +157,7 @@ export const dataService = {
         file_name: analysis.fileName || null,
         notes: analysis.notes || [],
         folder_id: analysis.folderId || null,
+        flashcard_passed: analysis.flashcardPassed || false,
       })
       .eq('id', analysis.id)
       .eq('user_id', userId)
@@ -425,6 +429,26 @@ export const dataService = {
 
     if (error) {
       console.error('Error updating analysis folder:', error);
+      return false;
+    }
+
+    return true;
+  },
+
+  /**
+   * Update flashcard passed status for an analysis
+   */
+  async updateFlashcardPassed(userId: string, analysisId: string, passed: boolean): Promise<boolean> {
+    if (!supabase) return false;
+
+    const { error } = await supabase
+      .from('saved_analyses')
+      .update({ flashcard_passed: passed })
+      .eq('id', analysisId)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error updating flashcard passed status:', error);
       return false;
     }
 
