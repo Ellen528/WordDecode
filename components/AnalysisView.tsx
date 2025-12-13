@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { AnalysisResult, VocabularyItem, VocabularyCategory, Note, UserProficiency, EnglishTestType } from '../types';
-import { CheckCircle, BookOpen, Layout, Zap, Volume2, Quote, MessageCircle, Sparkles, ArrowRightCircle, AlignLeft, ChevronDown, ChevronUp, Grid, Smartphone, Check, Save, ChevronLeft, ChevronRight, RotateCcw, RotateCw, X, XCircle, GraduationCap, Trophy, Award, BarChart3 } from 'lucide-react';
+import { AnalysisResult, VocabularyItem, VocabularyCategory, Note, UserProficiency, EnglishTestType, KnownWord } from '../types';
+import { CheckCircle, BookOpen, Layout, Zap, Volume2, Quote, MessageCircle, Sparkles, ArrowRightCircle, AlignLeft, ChevronDown, ChevronUp, Grid, Smartphone, Check, Save, ChevronLeft, ChevronRight, RotateCcw, RotateCw, X, XCircle, GraduationCap, Trophy, Award, BarChart3, FileText } from 'lucide-react';
 import { generateSpeech } from '../services/geminiService';
 import WordLookupPopup from './WordLookupPopup';
 import NotesSidebar from './NotesSidebar';
+import FullTextView from './FullTextView';
 
 interface Props {
   data: AnalysisResult;
@@ -17,6 +18,13 @@ interface Props {
   onUpdateFlashcardPassed?: (analysisId: string, passed: boolean) => void;
   // User proficiency for difficulty color coding
   proficiency?: UserProficiency | null;
+  // For Full Text View
+  originalText?: string;
+  comprehensiveVocab?: VocabularyItem[];
+  knownWords?: Record<string, KnownWord>;
+  onMarkWord?: (term: string, isKnown: boolean, difficulty_level?: string) => void;
+  isLoadingComprehensive?: boolean;
+  onLoadComprehensive?: () => void;
 }
 
 // Helper function to determine difficulty color based on user's level
@@ -135,11 +143,17 @@ const AnalysisView: React.FC<Props> = ({
   flashcardPassed = false,
   onUpdateFlashcardPassed,
   proficiency,
+  originalText = '',
+  comprehensiveVocab = [],
+  knownWords = {},
+  onMarkWord,
+  isLoadingComprehensive = false,
+  onLoadComprehensive,
 }) => {
   const [selectedTerms, setSelectedTerms] = useState<Set<string>>(new Set());
   const [playingText, setPlayingText] = useState<string | null>(null);
   const [isTocOpen, setIsTocOpen] = useState(true);
-  const [viewMode, setViewMode] = useState<'list' | 'flashcard'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'flashcard' | 'fulltext'>('list');
   const [savedAnalysis, setSavedAnalysis] = useState(false);
 
   // Word Lookup State
@@ -624,6 +638,18 @@ const AnalysisView: React.FC<Props> = ({
                 >
                   <Smartphone className="w-4 h-4" /> Flashcard
                 </button>
+                <button
+                  onClick={() => {
+                    setViewMode('fulltext');
+                    // Load comprehensive vocabulary if not already loaded
+                    if (comprehensiveVocab.length === 0 && onLoadComprehensive) {
+                      onLoadComprehensive();
+                    }
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'fulltext' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  <FileText className="w-4 h-4" /> Full Text
+                </button>
               </div>
 
               {/* Action Buttons */}
@@ -656,6 +682,22 @@ const AnalysisView: React.FC<Props> = ({
           </div>
         </div>
 
+        {/* Full Text View Mode */}
+        {viewMode === 'fulltext' && (
+          <div className="mt-6">
+            <FullTextView
+              originalText={originalText}
+              vocabulary={comprehensiveVocab.length > 0 ? comprehensiveVocab : data.vocabulary}
+              proficiency={proficiency || null}
+              knownWords={knownWords}
+              onMarkWord={onMarkWord || (() => {})}
+              isLoading={isLoadingComprehensive}
+            />
+          </div>
+        )}
+
+        {/* List and Flashcard View Modes */}
+        {viewMode !== 'fulltext' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
           {/* Left Column: Navigation & Logical Structure (3 cols) */}
@@ -946,6 +988,7 @@ const AnalysisView: React.FC<Props> = ({
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Fullscreen Flashcard Practice Modal */}

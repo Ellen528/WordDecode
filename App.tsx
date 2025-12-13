@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { analyzeText, generatePractice, generateTopicStrategy } from './services/geminiService';
-import { AnalysisResult, SourceType, VocabularyItem, GeneratedPractice, AppMode, SavedAnalysis, Note, AnalysisFolder, UserProficiency } from './types';
+import { AnalysisResult, SourceType, VocabularyItem, GeneratedPractice, AppMode, SavedAnalysis, Note, AnalysisFolder, UserProficiency, KnownWord } from './types';
 import AnalysisView from './components/AnalysisView';
 import PracticeView from './components/PracticeView';
 import HistoryView from './components/HistoryView';
@@ -60,6 +60,13 @@ const AppContent: React.FC = () => {
   // User Proficiency State
   const [proficiency, setProficiency] = useState<UserProficiency | null>(null);
 
+  // Known Words State (for Full Text View feedback)
+  const [knownWords, setKnownWords] = useState<Record<string, KnownWord>>({});
+
+  // Comprehensive vocabulary for Full Text View
+  const [comprehensiveVocab, setComprehensiveVocab] = useState<VocabularyItem[]>([]);
+  const [isLoadingComprehensive, setIsLoadingComprehensive] = useState(false);
+
   const resultRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasLoadedCloudData = useRef(false);
@@ -91,6 +98,16 @@ const AppContent: React.FC = () => {
         setProficiency(JSON.parse(savedProficiency));
       } catch (e) {
         console.error("Failed to parse proficiency", e);
+      }
+    }
+
+    // Load known words from localStorage
+    const savedKnownWords = localStorage.getItem('nativeNuance_knownWords');
+    if (savedKnownWords) {
+      try {
+        setKnownWords(JSON.parse(savedKnownWords));
+      } catch (e) {
+        console.error("Failed to parse known words", e);
       }
     }
   }, []);
@@ -335,13 +352,43 @@ const AppContent: React.FC = () => {
     // For now, proficiency is stored locally only
   };
 
+  const markWordKnown = (term: string, isKnown: boolean, difficulty_level?: string) => {
+    const key = term.toLowerCase();
+    const newKnownWords = {
+      ...knownWords,
+      [key]: {
+        term,
+        isKnown,
+        difficulty_level,
+        markedAt: Date.now(),
+      }
+    };
+    setKnownWords(newKnownWords);
+    localStorage.setItem('nativeNuance_knownWords', JSON.stringify(newKnownWords));
+  };
+
   const handleNewAnalysis = () => {
     setAnalysisResult(null);
     setInputText('');
     setFileName(null);
     setCurrentAnalysisId(null);
+    setComprehensiveVocab([]); // Clear comprehensive vocab
     setMode(AppMode.ANALYZE_TEXT);
     setStatus('idle');
+  };
+
+  const loadComprehensiveVocab = async () => {
+    if (!inputText.trim() || isLoadingComprehensive) return;
+    
+    setIsLoadingComprehensive(true);
+    try {
+      const result = await analyzeText(inputText, sourceType, proficiency, true);
+      setComprehensiveVocab(result.vocabulary);
+    } catch (e) {
+      console.error('Failed to load comprehensive vocabulary:', e);
+    } finally {
+      setIsLoadingComprehensive(false);
+    }
   };
 
   const handleExportData = () => {
@@ -762,6 +809,12 @@ const AppContent: React.FC = () => {
                         flashcardPassed={currentAnalysisId ? savedAnalyses.find(a => a.id === currentAnalysisId)?.flashcardPassed : false}
                         onUpdateFlashcardPassed={updateFlashcardPassed}
                         proficiency={proficiency}
+                        originalText={inputText}
+                        comprehensiveVocab={comprehensiveVocab}
+                        knownWords={knownWords}
+                        onMarkWord={markWordKnown}
+                        isLoadingComprehensive={isLoadingComprehensive}
+                        onLoadComprehensive={loadComprehensiveVocab}
                       />
                     </div>
                   </div>

@@ -113,3 +113,11 @@ export interface AnalysisFolder {
   createdAt: number;
   color?: string;
 }
+
+// For tracking known/unknown words in Full Text View
+export interface KnownWord {
+  term: string;
+  isKnown: boolean;
+  difficulty_level?: string;
+  markedAt: number;
+}

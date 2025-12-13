@@ -30,16 +30,22 @@ const callEdgeFunction = async (functionName: string, body: object) => {
 
 // --- Text Analysis (Deep Vocab Focus) ---
 
-export const analyzeText = async (text: string, sourceType: SourceType, proficiency?: UserProficiency | null): Promise<AnalysisResult> => {
-  console.log('Calling analyze-text Edge Function...');
+export const analyzeText = async (
+  text: string, 
+  sourceType: SourceType, 
+  proficiency?: UserProficiency | null,
+  comprehensive?: boolean  // When true, extracts ALL vocabulary for full text mode
+): Promise<AnalysisResult> => {
+  console.log('Calling analyze-text Edge Function...', { comprehensive });
   
   const result = await callEdgeFunction('analyze-text', { 
     text, 
     sourceType,
-    proficiency: proficiency || null
+    proficiency: proficiency || null,
+    comprehensive: comprehensive || false
   });
   
-  console.log('Analysis complete!');
+  console.log('Analysis complete!', { vocabCount: result.vocabulary?.length });
   return result as AnalysisResult;
 };
 
