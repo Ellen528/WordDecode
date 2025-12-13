@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { SavedAnalysis } from '../types';
-import { Plus, MessageSquare, Trash2, ChevronLeft, Sparkles, LogOut, LogIn, Download, Cloud, CloudOff, History, FolderOpen } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, ChevronLeft, Sparkles, LogOut, LogIn, Download, Cloud, CloudOff, History, FolderOpen, Check, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import AuthModal from './AuthModal';
 import CalendarHeatmap from './CalendarHeatmap';
@@ -10,6 +10,7 @@ interface Props {
     onLoadAnalysis: (analysis: SavedAnalysis) => void;
     onNewAnalysis: () => void;
     onRemoveAnalysis: (id: string) => void;
+    onRenameAnalysis?: (id: string, newTitle: string) => void;
     isOpen: boolean;
     toggleSidebar: () => void;
     onExportData?: () => void;
@@ -17,13 +18,68 @@ interface Props {
     isHistoryActive?: boolean;
 }
 
-const Sidebar: React.FC<Props> = ({ savedAnalyses, onLoadAnalysis, onNewAnalysis, onRemoveAnalysis, isOpen, toggleSidebar, onExportData, onOpenHistory, isHistoryActive }) => {
+// Helper function to generate a smart display name for an analysis
+const getAnalysisDisplayName = (analysis: SavedAnalysis): string => {
+    // Priority: custom title > file name > auto-generated from summary
+    if (analysis.title) {
+        return analysis.title;
+    }
+    if (analysis.fileName) {
+        return analysis.fileName;
+    }
+    // Auto-generate: take first sentence or first 40 chars
+    const summary = analysis.analysisResult.summary || '';
+    const firstSentence = summary.split(/[.!?]/)[0];
+    if (firstSentence.length <= 40) {
+        return firstSentence || 'Untitled Analysis';
+    }
+    return firstSentence.substring(0, 37) + '...';
+};
+
+const Sidebar: React.FC<Props> = ({ savedAnalyses, onLoadAnalysis, onNewAnalysis, onRemoveAnalysis, onRenameAnalysis, isOpen, toggleSidebar, onExportData, onOpenHistory, isHistoryActive }) => {
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
     const [isHeatmapOpen, setIsHeatmapOpen] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editingTitle, setEditingTitle] = useState('');
+    const editInputRef = useRef<HTMLInputElement>(null);
     const { user, isAuthenticated, signOut, isLoading } = useAuth();
+
+    // Focus input when editing starts
+    useEffect(() => {
+        if (editingId && editInputRef.current) {
+            editInputRef.current.focus();
+            editInputRef.current.select();
+        }
+    }, [editingId]);
 
     const handleSignOut = async () => {
         await signOut();
+    };
+
+    const handleStartEdit = (analysis: SavedAnalysis) => {
+        setEditingId(analysis.id);
+        setEditingTitle(getAnalysisDisplayName(analysis));
+    };
+
+    const handleSaveEdit = () => {
+        if (editingId && onRenameAnalysis && editingTitle.trim()) {
+            onRenameAnalysis(editingId, editingTitle.trim());
+        }
+        setEditingId(null);
+        setEditingTitle('');
+    };
+
+    const handleCancelEdit = () => {
+        setEditingId(null);
+        setEditingTitle('');
+    };
+
+    const handleEditKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            handleSaveEdit();
+        } else if (e.key === 'Escape') {
+            handleCancelEdit();
+        }
     };
 
     const getUserInitial = () => {
@@ -120,21 +176,57 @@ const Sidebar: React.FC<Props> = ({ savedAnalyses, onLoadAnalysis, onNewAnalysis
                         ) : (
                             uncategorizedAnalyses.map(analysis => (
                             <div key={analysis.id} className="group relative">
-                                <button
-                                    onClick={() => onLoadAnalysis(analysis)}
-                                    className="w-full text-left px-3 py-3 rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-3 text-sm group-hover:text-white"
-                                >
-                                    <MessageSquare className="w-4 h-4 text-slate-500 group-hover:text-slate-400 shrink-0" />
-                                    <div className="truncate flex-1">
-                                        {analysis.fileName || analysis.analysisResult.summary.substring(0, 30) + "..."}
+                                {editingId === analysis.id ? (
+                                    // Edit mode
+                                    <div className="flex items-center gap-2 px-3 py-2">
+                                        <input
+                                            ref={editInputRef}
+                                            type="text"
+                                            value={editingTitle}
+                                            onChange={(e) => setEditingTitle(e.target.value)}
+                                            onKeyDown={handleEditKeyDown}
+                                            onBlur={handleSaveEdit}
+                                            className="flex-1 bg-slate-800 text-white text-sm px-2 py-1 rounded border border-slate-600 focus:border-emerald-500 focus:outline-none"
+                                            placeholder="Enter title..."
+                                        />
+                                        <button
+                                            onClick={handleSaveEdit}
+                                            className="p-1 text-emerald-400 hover:text-emerald-300"
+                                        >
+                                            <Check className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                            onClick={handleCancelEdit}
+                                            className="p-1 text-slate-400 hover:text-slate-300"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
                                     </div>
-                                </button>
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); onRemoveAnalysis(analysis.id); }}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
-                                >
-                                    <Trash2 className="w-3 h-3" />
-                                </button>
+                                ) : (
+                                    // View mode
+                                    <>
+                                        <button
+                                            onClick={() => onLoadAnalysis(analysis)}
+                                            onDoubleClick={(e) => {
+                                                e.preventDefault();
+                                                if (onRenameAnalysis) handleStartEdit(analysis);
+                                            }}
+                                            className="w-full text-left px-3 py-3 rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-3 text-sm group-hover:text-white"
+                                            title="Double-click to rename"
+                                        >
+                                            <MessageSquare className="w-4 h-4 text-slate-500 group-hover:text-slate-400 shrink-0" />
+                                            <div className="truncate flex-1">
+                                                {getAnalysisDisplayName(analysis)}
+                                            </div>
+                                        </button>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onRemoveAnalysis(analysis.id); }}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                                        >
+                                            <Trash2 className="w-3 h-3" />
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         ))
                         );

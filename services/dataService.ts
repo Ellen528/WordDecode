@@ -10,6 +10,7 @@ interface DbSavedAnalysis {
   input_text: string;
   analysis_result: object;
   file_name: string | null;
+  title: string | null;
   notes: object | null;
   folder_id: string | null;
   flashcard_passed: boolean | null;
@@ -52,6 +53,7 @@ const dbToAnalysis = (row: DbSavedAnalysis): SavedAnalysis => ({
   inputText: row.input_text,
   analysisResult: row.analysis_result as SavedAnalysis['analysisResult'],
   fileName: row.file_name,
+  title: row.title,
   notes: (row.notes as Note[]) || [],
   folderId: row.folder_id || null,
   flashcardPassed: row.flashcard_passed || false,
@@ -120,6 +122,7 @@ export const dataService = {
         input_text: analysis.inputText,
         analysis_result: analysis.analysisResult,
         file_name: analysis.fileName || null,
+        title: analysis.title || null,
         notes: analysis.notes || [],
         folder_id: analysis.folderId || null,
         flashcard_passed: analysis.flashcardPassed || false,
@@ -155,6 +158,7 @@ export const dataService = {
         input_text: analysis.inputText,
         analysis_result: analysis.analysisResult,
         file_name: analysis.fileName || null,
+        title: analysis.title || null,
         notes: analysis.notes || [],
         folder_id: analysis.folderId || null,
         flashcard_passed: analysis.flashcardPassed || false,
@@ -449,6 +453,26 @@ export const dataService = {
 
     if (error) {
       console.error('Error updating flashcard passed status:', error);
+      return false;
+    }
+
+    return true;
+  },
+
+  /**
+   * Update analysis title
+   */
+  async updateAnalysisTitle(userId: string, analysisId: string, title: string | null): Promise<boolean> {
+    if (!supabase) return false;
+
+    const { error } = await supabase
+      .from('saved_analyses')
+      .update({ title })
+      .eq('id', analysisId)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error updating analysis title:', error);
       return false;
     }
 

@@ -78,6 +78,7 @@ export interface SavedAnalysis {
   inputText: string;
   analysisResult: AnalysisResult;
   fileName?: string | null;
+  title?: string | null;  // Custom user-defined title for the analysis
   notes?: Note[];
   folderId?: string | null;
   flashcardPassed?: boolean;

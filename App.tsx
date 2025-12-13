@@ -303,6 +303,18 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const renameAnalysis = async (analysisId: string, newTitle: string) => {
+    const newAnalyses = savedAnalyses.map(a => 
+      a.id === analysisId ? { ...a, title: newTitle } : a
+    );
+    setSavedAnalyses(newAnalyses);
+    localStorage.setItem('nativeNuance_analysisHistory', JSON.stringify(newAnalyses));
+
+    if (isAuthenticated && user) {
+      await dataService.updateAnalysisTitle(user.id, analysisId, newTitle);
+    }
+  };
+
   const handleNewAnalysis = () => {
     setAnalysisResult(null);
     setInputText('');
@@ -503,6 +515,7 @@ const AppContent: React.FC = () => {
         onLoadAnalysis={loadAnalysis}
         onNewAnalysis={handleNewAnalysis}
         onRemoveAnalysis={removeAnalysis}
+        onRenameAnalysis={renameAnalysis}
         isOpen={isSidebarOpen}
         toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         onExportData={handleExportData}
