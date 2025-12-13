@@ -929,25 +929,52 @@ const AnalysisView: React.FC<Props> = ({
                                 </div>
 
                                 {/* Back */}
-                                <div className="absolute inset-0 backface-hidden bg-slate-800 rounded-2xl shadow-lg rotate-y-180 flex flex-col items-center p-8 text-center">
+                                <div className="absolute inset-0 backface-hidden bg-slate-800 rounded-2xl shadow-lg rotate-y-180 flex flex-col p-6 overflow-y-auto">
                                   {/* Added Term Header for Context */}
-                                  <h3 className="text-2xl font-serif font-bold text-emerald-400 mb-6 shrink-0">{currentItem.term}</h3>
+                                  <h3 className="text-2xl font-serif font-bold text-emerald-400 mb-4 text-center shrink-0">{currentItem.term}</h3>
 
-                                  <div className="flex-1 flex flex-col justify-center w-full gap-4">
-                                    <p className="text-white text-xl font-medium leading-relaxed">{currentItem.definition}</p>
+                                  <div className="flex-1 flex flex-col w-full gap-3">
+                                    <p className="text-white text-lg font-medium leading-relaxed text-center">{currentItem.definition}</p>
 
                                     {currentItem.imagery_etymology && (
-                                      <div className="bg-slate-700/50 p-4 rounded-lg border border-slate-600">
-                                        <p className="text-xs font-bold text-slate-400 uppercase mb-2">Nuance</p>
-                                        <p className="text-slate-200 text-base">{currentItem.imagery_etymology}</p>
+                                      <div className="bg-slate-700/50 p-3 rounded-lg border border-slate-600">
+                                        <p className="text-xs font-bold text-slate-400 uppercase mb-1">Nuance</p>
+                                        <p className="text-slate-200 text-sm">{currentItem.imagery_etymology}</p>
                                       </div>
                                     )}
 
                                     {currentItem.examples && currentItem.examples[0] && (
-                                      <div className="text-slate-300 text-lg italic border-t border-slate-700 pt-4 mt-2">
+                                      <div className="text-slate-300 text-base italic border-t border-slate-700 pt-3 text-center">
                                         "{currentItem.examples[0].sentence}"
                                       </div>
                                     )}
+
+                                    {/* User's Notes for this term */}
+                                    {(() => {
+                                      const termNotes = notes.filter(n => 
+                                        n.word.toLowerCase() === currentItem.term.toLowerCase() ||
+                                        currentItem.term.toLowerCase().includes(n.word.toLowerCase()) ||
+                                        n.word.toLowerCase().includes(currentItem.term.toLowerCase())
+                                      );
+                                      if (termNotes.length === 0) return null;
+                                      return (
+                                        <div className="bg-amber-900/30 p-3 rounded-lg border border-amber-700/50 mt-2">
+                                          <p className="text-xs font-bold text-amber-400 uppercase mb-2 flex items-center gap-1">
+                                            <MessageCircle className="w-3 h-3" /> Your Notes
+                                          </p>
+                                          <div className="space-y-2">
+                                            {termNotes.map(note => (
+                                              <div key={note.id} className="text-sm">
+                                                <p className="text-amber-100">{note.definition}</p>
+                                                {note.context && (
+                                                  <p className="text-amber-300/70 text-xs italic mt-1">"{note.context}"</p>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
                                 </div>
                               </div>
@@ -1211,6 +1238,33 @@ const AnalysisView: React.FC<Props> = ({
                             </button>
                           </div>
                         </div>
+
+                        {/* User's Notes for this term */}
+                        {(() => {
+                          const termNotes = notes.filter(n => 
+                            n.word.toLowerCase() === currentItem.term.toLowerCase() ||
+                            currentItem.term.toLowerCase().includes(n.word.toLowerCase()) ||
+                            n.word.toLowerCase().includes(currentItem.term.toLowerCase())
+                          );
+                          if (termNotes.length === 0) return null;
+                          return (
+                            <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                              <p className="text-xs font-bold text-amber-600 uppercase mb-2 flex items-center gap-1">
+                                <MessageCircle className="w-3 h-3" /> Your Notes
+                              </p>
+                              <div className="space-y-2">
+                                {termNotes.map(note => (
+                                  <div key={note.id} className="text-sm">
+                                    <p className="text-slate-700">{note.definition}</p>
+                                    {note.context && (
+                                      <p className="text-slate-500 text-xs italic mt-1">"{note.context}"</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         {/* Next Button */}
                         <button
