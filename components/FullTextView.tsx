@@ -12,6 +12,14 @@ interface Props {
     isLoading?: boolean;
 }
 
+// Extract numeric score from difficulty level string
+const extractDifficultyScore = (level: string): number | null => {
+    if (!level) return null;
+    // Match first number in the string (e.g., "IELTS 6-7" -> 6, "TOEFL 80+" -> 80)
+    const match = level.match(/(\d+(?:\.\d+)?)/);
+    return match ? parseFloat(match[1]) : null;
+};
+
 // Get highlight color based on difficulty and known status
 const getHighlightClass = (
     item: VocabularyItem,
@@ -20,65 +28,63 @@ const getHighlightClass = (
 ): string => {
     // If marked as known, show green
     if (isKnown === true) {
-        return 'bg-emerald-200 hover:bg-emerald-300 text-emerald-900';
+        return 'bg-emerald-300 hover:bg-emerald-400 text-emerald-900 ring-1 ring-emerald-400';
     }
     
-    // If marked as unknown, show with emphasis
+    // If marked as unknown, show with red emphasis
     if (isKnown === false) {
-        return 'bg-red-200 hover:bg-red-300 text-red-900 font-medium';
+        return 'bg-rose-300 hover:bg-rose-400 text-rose-900 font-medium ring-1 ring-rose-400';
     }
 
     // Not marked yet - color by difficulty level
-    if (!item.difficulty_level || !proficiency) {
+    const diffLevel = item.difficulty_level;
+    
+    // If no proficiency set, use a simple heuristic based on difficulty string
+    if (!proficiency) {
+        // Color based on the number in difficulty level
+        const score = extractDifficultyScore(diffLevel || '');
+        if (score === null) return 'bg-amber-200 hover:bg-amber-300 text-amber-900';
+        // Assume IELTS-like scale for default
+        if (score <= 5) return 'bg-sky-200 hover:bg-sky-300 text-sky-900'; // Easy
+        if (score <= 6.5) return 'bg-amber-200 hover:bg-amber-300 text-amber-900'; // Medium
+        if (score <= 7.5) return 'bg-orange-300 hover:bg-orange-400 text-orange-900'; // Hard
+        return 'bg-rose-200 hover:bg-rose-300 text-rose-900'; // Very hard
+    }
+
+    if (!diffLevel) {
         return 'bg-amber-200 hover:bg-amber-300 text-amber-900';
     }
 
-    // Extract score from difficulty level
-    const extractScore = (level: string, testType: EnglishTestType): number | null => {
-        const normalized = level.toUpperCase();
-        
-        if (testType === EnglishTestType.IELTS || normalized.includes('IELTS')) {
-            const match = normalized.match(/(\d+(?:\.\d+)?)/);
-            if (match) return parseFloat(match[1]);
-        }
-        
-        if (testType === EnglishTestType.TOEFL || normalized.includes('TOEFL')) {
-            const match = normalized.match(/(\d+)/);
-            if (match) return parseInt(match[1]);
-        }
-        
-        if (testType === EnglishTestType.CET4 || testType === EnglishTestType.CET6 || normalized.includes('CET')) {
-            const match = normalized.match(/(\d{3,})/);
-            if (match) return parseInt(match[1]);
-        }
-
-        return null;
-    };
-
-    const vocabScore = extractScore(item.difficulty_level, proficiency.testType);
+    const vocabScore = extractDifficultyScore(diffLevel);
     const userScore = proficiency.score;
 
     if (vocabScore === null) {
         return 'bg-amber-200 hover:bg-amber-300 text-amber-900';
     }
 
-    // Compare scores
-    let diff: number;
+    // Compare scores based on test type
     if (proficiency.testType === EnglishTestType.IELTS) {
-        diff = vocabScore - userScore;
-        if (diff <= 0.5) return 'bg-yellow-200 hover:bg-yellow-300 text-yellow-900'; // At level
-        if (diff <= 1.5) return 'bg-orange-200 hover:bg-orange-300 text-orange-900'; // Slightly above
-        return 'bg-red-200 hover:bg-red-300 text-red-900'; // Advanced
+        const diff = vocabScore - userScore;
+        if (diff <= 0) return 'bg-sky-200 hover:bg-sky-300 text-sky-900'; // Below level (easy)
+        if (diff <= 0.5) return 'bg-teal-200 hover:bg-teal-300 text-teal-900'; // At level
+        if (diff <= 1) return 'bg-amber-300 hover:bg-amber-400 text-amber-900'; // Slightly above
+        if (diff <= 1.5) return 'bg-orange-300 hover:bg-orange-400 text-orange-900'; // Above
+        return 'bg-rose-300 hover:bg-rose-400 text-rose-900'; // Advanced
     } else if (proficiency.testType === EnglishTestType.TOEFL) {
-        diff = vocabScore - userScore;
-        if (diff <= 10) return 'bg-yellow-200 hover:bg-yellow-300 text-yellow-900';
-        if (diff <= 25) return 'bg-orange-200 hover:bg-orange-300 text-orange-900';
-        return 'bg-red-200 hover:bg-red-300 text-red-900';
+        const diff = vocabScore - userScore;
+        if (diff <= 0) return 'bg-sky-200 hover:bg-sky-300 text-sky-900';
+        if (diff <= 5) return 'bg-teal-200 hover:bg-teal-300 text-teal-900';
+        if (diff <= 15) return 'bg-amber-300 hover:bg-amber-400 text-amber-900';
+        if (diff <= 25) return 'bg-orange-300 hover:bg-orange-400 text-orange-900';
+        return 'bg-rose-300 hover:bg-rose-400 text-rose-900';
     } else {
-        diff = vocabScore - userScore;
-        if (diff <= 50) return 'bg-yellow-200 hover:bg-yellow-300 text-yellow-900';
-        if (diff <= 100) return 'bg-orange-200 hover:bg-orange-300 text-orange-900';
-        return 'bg-red-200 hover:bg-red-300 text-red-900';
+        // CET
+        const diff = vocabScore - userScore;
+        if (diff <= 0) return 'bg-sky-200 hover:bg-sky-300 text-sky-900';
+        if (diff <= 25) return 'bg-teal-200 hover:bg-teal-300 text-teal-900';
+        if (diff <= 50) return 'bg-amber-300 hover:bg-amber-400 text-amber-900';
+        if (diff <= 100) return 'bg-orange-300 hover:bg-orange-400 text-orange-900';
+        return 'bg-rose-300 hover:bg-rose-400 text-rose-900';
     }
 };
 
@@ -311,53 +317,118 @@ const FullTextView: React.FC<Props> = ({
             </div>
 
             {/* Color Legend */}
-            <div className="flex flex-wrap items-center gap-4 text-xs">
-                <span className="text-slate-500">Click highlighted words:</span>
-                <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded bg-yellow-300"></span>
-                    At your level
-                </span>
-                <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded bg-orange-300"></span>
-                    Slightly above
-                </span>
-                <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded bg-red-300"></span>
-                    Advanced
-                </span>
-                <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded bg-emerald-300"></span>
-                    Marked known
-                </span>
+            <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                <div className="flex flex-wrap items-center gap-3 text-xs">
+                    <span className="text-slate-600 font-medium">Difficulty levels:</span>
+                    <span className="flex items-center gap-1.5 px-2 py-1 bg-white rounded-full border">
+                        <span className="w-3 h-3 rounded-full bg-sky-300"></span>
+                        Easy
+                    </span>
+                    <span className="flex items-center gap-1.5 px-2 py-1 bg-white rounded-full border">
+                        <span className="w-3 h-3 rounded-full bg-teal-300"></span>
+                        At level
+                    </span>
+                    <span className="flex items-center gap-1.5 px-2 py-1 bg-white rounded-full border">
+                        <span className="w-3 h-3 rounded-full bg-amber-300"></span>
+                        Learning zone
+                    </span>
+                    <span className="flex items-center gap-1.5 px-2 py-1 bg-white rounded-full border">
+                        <span className="w-3 h-3 rounded-full bg-orange-400"></span>
+                        Challenging
+                    </span>
+                    <span className="flex items-center gap-1.5 px-2 py-1 bg-white rounded-full border">
+                        <span className="w-3 h-3 rounded-full bg-rose-400"></span>
+                        Advanced
+                    </span>
+                    <span className="ml-2 border-l pl-3 flex items-center gap-1.5 px-2 py-1 bg-white rounded-full border">
+                        <span className="w-3 h-3 rounded-full bg-emerald-400"></span>
+                        Known ✓
+                    </span>
+                </div>
             </div>
 
             {/* Full Text with Highlights */}
             <div 
-                className="bg-white rounded-xl p-6 shadow-sm border border-slate-200"
+                className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden"
                 onClick={() => setSelectedWord(null)}
             >
-                <p className="text-lg leading-relaxed text-slate-800 font-serif whitespace-pre-wrap">
-                    {highlightedText.map((part, idx) => {
-                        if (part.type === 'text') {
-                            return <span key={idx}>{part.content}</span>;
-                        }
+                {/* Render text with proper paragraph formatting */}
+                <div className="p-6 md:p-8">
+                    {(() => {
+                        // Split highlighted content into paragraphs
+                        const renderContent = () => {
+                            const elements: React.ReactNode[] = [];
+                            let currentParagraph: React.ReactNode[] = [];
+                            let paragraphIndex = 0;
 
-                        const item = part.item!;
-                        const knownStatus = knownWords[item.term.toLowerCase()];
-                        const isKnown = knownStatus?.isKnown ?? null;
-                        const highlightClass = getHighlightClass(item, isKnown, proficiency);
+                            highlightedText.forEach((part, idx) => {
+                                if (part.type === 'text') {
+                                    // Check for paragraph breaks (double newline or single newline)
+                                    const segments = part.content.split(/(\n\n|\n)/);
+                                    segments.forEach((segment, segIdx) => {
+                                        if (segment === '\n\n' || segment === '\n') {
+                                            // End current paragraph, start new one
+                                            if (currentParagraph.length > 0) {
+                                                elements.push(
+                                                    <p key={`p-${paragraphIndex}`} className="text-lg leading-loose text-slate-800 mb-6 first:mt-0 last:mb-0 text-justify">
+                                                        {currentParagraph}
+                                                    </p>
+                                                );
+                                                paragraphIndex++;
+                                                currentParagraph = [];
+                                            }
+                                            // Add extra space for double newline
+                                            if (segment === '\n\n') {
+                                                elements.push(<div key={`br-${paragraphIndex}-${segIdx}`} className="h-2" />);
+                                            }
+                                        } else if (segment) {
+                                            currentParagraph.push(<span key={`t-${idx}-${segIdx}`}>{segment}</span>);
+                                        }
+                                    });
+                                } else {
+                                    const item = part.item!;
+                                    const knownStatus = knownWords[item.term.toLowerCase()];
+                                    const isKnown = knownStatus?.isKnown ?? null;
+                                    const highlightClass = getHighlightClass(item, isKnown, proficiency);
+
+                                    currentParagraph.push(
+                                        <span
+                                            key={`h-${idx}`}
+                                            onClick={(e) => handleWordClick(item, e)}
+                                            className={`cursor-pointer rounded-sm px-1 py-0.5 mx-0.5 transition-all hover:scale-105 inline-block ${highlightClass}`}
+                                            title={`${item.difficulty_level || 'Click for definition'}`}
+                                        >
+                                            {part.content}
+                                        </span>
+                                    );
+                                }
+                            });
+
+                            // Don't forget the last paragraph
+                            if (currentParagraph.length > 0) {
+                                elements.push(
+                                    <p key={`p-${paragraphIndex}`} className="text-lg leading-loose text-slate-800 mb-6 first:mt-0 last:mb-0 text-justify">
+                                        {currentParagraph}
+                                    </p>
+                                );
+                            }
+
+                            return elements;
+                        };
 
                         return (
-                            <span
-                                key={idx}
-                                onClick={(e) => handleWordClick(item, e)}
-                                className={`cursor-pointer rounded px-0.5 transition-colors ${highlightClass}`}
-                            >
-                                {part.content}
-                            </span>
+                            <article className="prose prose-lg max-w-none font-serif">
+                                {renderContent()}
+                            </article>
                         );
-                    })}
-                </p>
+                    })()}
+                </div>
+
+                {/* Vocabulary count footer */}
+                <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 text-sm text-slate-500">
+                    <strong className="text-slate-700">{vocabulary.length}</strong> vocabulary items highlighted • 
+                    Click any highlighted word to see its definition
+                </div>
             </div>
 
             {/* Word Popup */}
