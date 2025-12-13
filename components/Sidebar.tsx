@@ -105,18 +105,20 @@ const Sidebar: React.FC<Props> = ({ savedAnalyses, onLoadAnalysis, onNewAnalysis
                     </div>
                 </div>
 
-                {/* History List */}
+                {/* History List - Only show uncategorized analyses (not in folders) */}
                 <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-2 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
                     <div className="px-4 py-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        History
+                        Recent
                     </div>
 
-                    {savedAnalyses.length === 0 ? (
-                        <div className="px-4 py-4 text-center text-slate-500 text-sm italic">
-                            No saved analyses yet.
-                        </div>
-                    ) : (
-                        savedAnalyses.map(analysis => (
+                    {(() => {
+                        const uncategorizedAnalyses = savedAnalyses.filter(a => !a.folderId);
+                        return uncategorizedAnalyses.length === 0 ? (
+                            <div className="px-4 py-4 text-center text-slate-500 text-sm italic">
+                                No recent analyses.
+                            </div>
+                        ) : (
+                            uncategorizedAnalyses.map(analysis => (
                             <div key={analysis.id} className="group relative">
                                 <button
                                     onClick={() => onLoadAnalysis(analysis)}
@@ -135,7 +137,8 @@ const Sidebar: React.FC<Props> = ({ savedAnalyses, onLoadAnalysis, onNewAnalysis
                                 </button>
                             </div>
                         ))
-                    )}
+                        );
+                    })()}
                 </div>
 
                 {/* Export Button */}
