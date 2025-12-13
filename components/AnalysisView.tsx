@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { AnalysisResult, VocabularyItem, VocabularyCategory, Note } from '../types';
-import { CheckCircle, BookOpen, Layout, Zap, Volume2, Quote, MessageCircle, Sparkles, ArrowRightCircle, AlignLeft, ChevronDown, ChevronUp, Grid, Smartphone, Check, Save, ChevronLeft, ChevronRight, RotateCcw, RotateCw, X, XCircle, GraduationCap, Trophy, Award } from 'lucide-react';
+import { AnalysisResult, VocabularyItem, VocabularyCategory, Note, UserProficiency, EnglishTestType } from '../types';
+import { CheckCircle, BookOpen, Layout, Zap, Volume2, Quote, MessageCircle, Sparkles, ArrowRightCircle, AlignLeft, ChevronDown, ChevronUp, Grid, Smartphone, Check, Save, ChevronLeft, ChevronRight, RotateCcw, RotateCw, X, XCircle, GraduationCap, Trophy, Award, BarChart3 } from 'lucide-react';
 import { generateSpeech } from '../services/geminiService';
 import WordLookupPopup from './WordLookupPopup';
 import NotesSidebar from './NotesSidebar';
@@ -15,7 +15,88 @@ interface Props {
   analysisId?: string;
   flashcardPassed?: boolean;
   onUpdateFlashcardPassed?: (analysisId: string, passed: boolean) => void;
+  // User proficiency for difficulty color coding
+  proficiency?: UserProficiency | null;
 }
+
+// Helper function to determine difficulty color based on user's level
+const getDifficultyColor = (difficultyLevel: string | undefined, proficiency: UserProficiency | null | undefined): { bg: string; text: string; label: string } => {
+  if (!difficultyLevel) {
+    return { bg: 'bg-slate-100', text: 'text-slate-500', label: 'Unknown' };
+  }
+
+  if (!proficiency) {
+    // No proficiency set - just show neutral
+    return { bg: 'bg-indigo-100', text: 'text-indigo-700', label: difficultyLevel };
+  }
+
+  // Parse the difficulty level to extract numeric value
+  const extractScore = (level: string, testType: EnglishTestType): number | null => {
+    const normalized = level.toUpperCase();
+    
+    // Handle IELTS scores (e.g., "IELTS 6-7", "IELTS 7+", "IELTS 8")
+    if (testType === EnglishTestType.IELTS || normalized.includes('IELTS')) {
+      const match = normalized.match(/(\d+(?:\.\d+)?)/);
+      if (match) return parseFloat(match[1]);
+    }
+    
+    // Handle TOEFL scores (e.g., "TOEFL 80+", "TOEFL 60-80")
+    if (testType === EnglishTestType.TOEFL || normalized.includes('TOEFL')) {
+      const match = normalized.match(/(\d+)/);
+      if (match) return parseInt(match[1]);
+    }
+    
+    // Handle CET scores (e.g., "CET-4 500+", "CET-6 550+")
+    if (testType === EnglishTestType.CET4 || testType === EnglishTestType.CET6 || normalized.includes('CET')) {
+      const match = normalized.match(/(\d{3,})/);
+      if (match) return parseInt(match[1]);
+    }
+
+    return null;
+  };
+
+  const vocabScore = extractScore(difficultyLevel, proficiency.testType);
+  const userScore = proficiency.score;
+
+  if (vocabScore === null) {
+    return { bg: 'bg-indigo-100', text: 'text-indigo-700', label: difficultyLevel };
+  }
+
+  // Compare scores based on test type
+  let isAtLevel = false;
+  let isSlightlyAbove = false;
+  let isAdvanced = false;
+
+  if (proficiency.testType === EnglishTestType.IELTS) {
+    // IELTS: 0.5 band = at level, 1-1.5 = slightly above, 2+ = advanced
+    const diff = vocabScore - userScore;
+    isAtLevel = diff <= 0.5;
+    isSlightlyAbove = diff > 0.5 && diff <= 1.5;
+    isAdvanced = diff > 1.5;
+  } else if (proficiency.testType === EnglishTestType.TOEFL) {
+    // TOEFL: 10 points = at level, 10-25 = slightly above, 25+ = advanced
+    const diff = vocabScore - userScore;
+    isAtLevel = diff <= 10;
+    isSlightlyAbove = diff > 10 && diff <= 25;
+    isAdvanced = diff > 25;
+  } else {
+    // CET: 50 points = at level, 50-100 = slightly above, 100+ = advanced
+    const diff = vocabScore - userScore;
+    isAtLevel = diff <= 50;
+    isSlightlyAbove = diff > 50 && diff <= 100;
+    isAdvanced = diff > 100;
+  }
+
+  if (isAtLevel) {
+    return { bg: 'bg-emerald-100', text: 'text-emerald-700', label: difficultyLevel };
+  } else if (isSlightlyAbove) {
+    return { bg: 'bg-amber-100', text: 'text-amber-700', label: difficultyLevel };
+  } else if (isAdvanced) {
+    return { bg: 'bg-red-100', text: 'text-red-700', label: difficultyLevel };
+  }
+
+  return { bg: 'bg-indigo-100', text: 'text-indigo-700', label: difficultyLevel };
+};
 
 const CATEGORY_CONFIG: Record<VocabularyCategory, { label: string; color: string; icon: React.ReactNode }> = {
   'idioms_fixed': {
@@ -53,6 +134,7 @@ const AnalysisView: React.FC<Props> = ({
   analysisId,
   flashcardPassed = false,
   onUpdateFlashcardPassed,
+  proficiency,
 }) => {
   const [selectedTerms, setSelectedTerms] = useState<Set<string>>(new Set());
   const [playingText, setPlayingText] = useState<string | null>(null);
@@ -691,7 +773,7 @@ const AnalysisView: React.FC<Props> = ({
                           >
                             <div className="p-6 pb-4">
                               <div className="flex justify-between items-start mb-3">
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-3 flex-wrap">
                                   <h3 className="text-2xl font-serif font-bold text-slate-900">{item.term}</h3>
                                   <button
                                     onClick={(e) => handlePlayAudio(e, item.term)}
@@ -699,6 +781,18 @@ const AnalysisView: React.FC<Props> = ({
                                   >
                                     <Volume2 className="w-5 h-5" />
                                   </button>
+                                  {/* Difficulty Badge */}
+                                  {item.difficulty_level && (
+                                    (() => {
+                                      const diffColor = getDifficultyColor(item.difficulty_level, proficiency);
+                                      return (
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${diffColor.bg} ${diffColor.text}`}>
+                                          <BarChart3 className="w-3 h-3" />
+                                          {diffColor.label}
+                                        </span>
+                                      );
+                                    })()
+                                  )}
                                 </div>
                                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 text-transparent'}`}>
                                   <CheckCircle className="w-4 h-4" />

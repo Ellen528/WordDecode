@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { analyzeText, generatePractice, generateTopicStrategy } from './services/geminiService';
-import { AnalysisResult, SourceType, VocabularyItem, GeneratedPractice, AppMode, SavedAnalysis, Note, AnalysisFolder } from './types';
+import { AnalysisResult, SourceType, VocabularyItem, GeneratedPractice, AppMode, SavedAnalysis, Note, AnalysisFolder, UserProficiency } from './types';
 import AnalysisView from './components/AnalysisView';
 import PracticeView from './components/PracticeView';
 import HistoryView from './components/HistoryView';
@@ -57,6 +57,9 @@ const AppContent: React.FC = () => {
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [currentAnalysisId, setCurrentAnalysisId] = useState<string | null>(null);
 
+  // User Proficiency State
+  const [proficiency, setProficiency] = useState<UserProficiency | null>(null);
+
   const resultRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasLoadedCloudData = useRef(false);
@@ -78,6 +81,16 @@ const AppContent: React.FC = () => {
         setAnalysisFolders(JSON.parse(savedFoldersData));
       } catch (e) {
         console.error("Failed to parse folders", e);
+      }
+    }
+
+    // Load proficiency from localStorage
+    const savedProficiency = localStorage.getItem('nativeNuance_proficiency');
+    if (savedProficiency) {
+      try {
+        setProficiency(JSON.parse(savedProficiency));
+      } catch (e) {
+        console.error("Failed to parse proficiency", e);
       }
     }
   }, []);
@@ -315,6 +328,13 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const saveProficiency = (newProficiency: UserProficiency) => {
+    setProficiency(newProficiency);
+    localStorage.setItem('nativeNuance_proficiency', JSON.stringify(newProficiency));
+    // Note: For cloud sync, we could store in user metadata or a user_preferences table
+    // For now, proficiency is stored locally only
+  };
+
   const handleNewAnalysis = () => {
     setAnalysisResult(null);
     setInputText('');
@@ -399,7 +419,7 @@ const AppContent: React.FC = () => {
     setAnalysisResult(null);
 
     try {
-      const result = await analyzeText(inputText, sourceType);
+      const result = await analyzeText(inputText, sourceType, proficiency);
       setAnalysisResult(result);
       setStatus('complete');
       setTimeout(() => {
@@ -521,6 +541,8 @@ const AppContent: React.FC = () => {
         onExportData={handleExportData}
         onOpenHistory={() => setMode(AppMode.HISTORY)}
         isHistoryActive={mode === AppMode.HISTORY}
+        proficiency={proficiency}
+        onSaveProficiency={saveProficiency}
       />
 
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
@@ -739,6 +761,7 @@ const AppContent: React.FC = () => {
                         analysisId={currentAnalysisId || undefined}
                         flashcardPassed={currentAnalysisId ? savedAnalyses.find(a => a.id === currentAnalysisId)?.flashcardPassed : false}
                         onUpdateFlashcardPassed={updateFlashcardPassed}
+                        proficiency={proficiency}
                       />
                     </div>
                   </div>

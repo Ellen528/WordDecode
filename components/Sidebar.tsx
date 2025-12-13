@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { SavedAnalysis } from '../types';
-import { Plus, MessageSquare, Trash2, ChevronLeft, Sparkles, LogOut, LogIn, Download, Cloud, CloudOff, History, FolderOpen, Check, X } from 'lucide-react';
+import { SavedAnalysis, UserProficiency } from '../types';
+import { Plus, MessageSquare, Trash2, ChevronLeft, Sparkles, LogOut, LogIn, Download, Cloud, CloudOff, History, FolderOpen, Check, X, Settings } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import AuthModal from './AuthModal';
 import CalendarHeatmap from './CalendarHeatmap';
+import SettingsModal from './SettingsModal';
 
 interface Props {
     savedAnalyses: SavedAnalysis[];
@@ -16,6 +17,8 @@ interface Props {
     onExportData?: () => void;
     onOpenHistory?: () => void;
     isHistoryActive?: boolean;
+    proficiency: UserProficiency | null;
+    onSaveProficiency: (proficiency: UserProficiency) => void;
 }
 
 // Helper function to generate a smart display name for an analysis
@@ -36,9 +39,10 @@ const getAnalysisDisplayName = (analysis: SavedAnalysis): string => {
     return firstSentence.substring(0, 37) + '...';
 };
 
-const Sidebar: React.FC<Props> = ({ savedAnalyses, onLoadAnalysis, onNewAnalysis, onRemoveAnalysis, onRenameAnalysis, isOpen, toggleSidebar, onExportData, onOpenHistory, isHistoryActive }) => {
+const Sidebar: React.FC<Props> = ({ savedAnalyses, onLoadAnalysis, onNewAnalysis, onRemoveAnalysis, onRenameAnalysis, isOpen, toggleSidebar, onExportData, onOpenHistory, isHistoryActive, proficiency, onSaveProficiency }) => {
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
     const [isHeatmapOpen, setIsHeatmapOpen] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editingTitle, setEditingTitle] = useState('');
     const editInputRef = useRef<HTMLInputElement>(null);
@@ -233,9 +237,21 @@ const Sidebar: React.FC<Props> = ({ savedAnalyses, onLoadAnalysis, onNewAnalysis
                     })()}
                 </div>
 
-                {/* Export Button */}
-                {onExportData && savedAnalyses.length > 0 && (
-                    <div className="px-4 pb-2">
+                {/* Settings & Export Buttons */}
+                <div className="px-4 pb-2 space-y-2">
+                    <button
+                        onClick={() => setIsSettingsOpen(true)}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 hover:text-white transition-all text-sm"
+                    >
+                        <Settings className="w-4 h-4" />
+                        Settings
+                        {proficiency && (
+                            <span className="ml-auto text-xs bg-indigo-600 text-white px-2 py-0.5 rounded-full">
+                                {proficiency.testType} {proficiency.score}
+                            </span>
+                        )}
+                    </button>
+                    {onExportData && savedAnalyses.length > 0 && (
                         <button
                             onClick={onExportData}
                             className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 hover:text-white transition-all text-sm"
@@ -243,8 +259,8 @@ const Sidebar: React.FC<Props> = ({ savedAnalyses, onLoadAnalysis, onNewAnalysis
                             <Download className="w-4 h-4" />
                             Export as JSON
                         </button>
-                    </div>
-                )}
+                    )}
+                </div>
 
                 {/* Footer - User Section */}
                 <div className="p-4 border-t border-slate-800">
@@ -304,6 +320,14 @@ const Sidebar: React.FC<Props> = ({ savedAnalyses, onLoadAnalysis, onNewAnalysis
                     onClose={() => setIsHeatmapOpen(false)}
                 />
             )}
+
+            {/* Settings Modal */}
+            <SettingsModal
+                isOpen={isSettingsOpen}
+                onClose={() => setIsSettingsOpen(false)}
+                proficiency={proficiency}
+                onSaveProficiency={onSaveProficiency}
+            />
         </>
     );
 };

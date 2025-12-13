@@ -12,6 +12,28 @@ export enum AppMode {
   HISTORY = 'history'
 }
 
+// English proficiency test types
+export enum EnglishTestType {
+  IELTS = 'IELTS',
+  TOEFL = 'TOEFL',
+  CET4 = 'CET-4',
+  CET6 = 'CET-6'
+}
+
+// User's English proficiency level
+export interface UserProficiency {
+  testType: EnglishTestType;
+  score: number;
+}
+
+// Score ranges for each test type
+export const TEST_SCORE_RANGES: Record<EnglishTestType, { min: number; max: number; step: number }> = {
+  [EnglishTestType.IELTS]: { min: 0, max: 9, step: 0.5 },
+  [EnglishTestType.TOEFL]: { min: 0, max: 120, step: 1 },
+  [EnglishTestType.CET4]: { min: 0, max: 710, step: 1 },
+  [EnglishTestType.CET6]: { min: 0, max: 710, step: 1 },
+};
+
 export type VocabularyCategory =
   | 'idioms_fixed'       // "get into a jam"
   | 'phrasal_verbs'      // "circle back", "huddle up"
@@ -34,6 +56,7 @@ export interface VocabularyItem {
   examples: DetailedExample[];
   nuance?: string; // Kept for backward compatibility/fallback
   example_usage?: string; // Kept for backward compatibility
+  difficulty_level?: string; // e.g., "IELTS 6-7", "TOEFL 80+", "CET-4 550+"
 }
 
 export interface StructurePoint {

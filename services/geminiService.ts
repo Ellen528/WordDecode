@@ -1,5 +1,5 @@
 
-import { AnalysisResult, GeneratedPractice, SourceType, VocabularyItem } from "../types";
+import { AnalysisResult, GeneratedPractice, SourceType, VocabularyItem, UserProficiency } from "../types";
 
 // Get Supabase URL from environment
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -30,10 +30,14 @@ const callEdgeFunction = async (functionName: string, body: object) => {
 
 // --- Text Analysis (Deep Vocab Focus) ---
 
-export const analyzeText = async (text: string, sourceType: SourceType): Promise<AnalysisResult> => {
+export const analyzeText = async (text: string, sourceType: SourceType, proficiency?: UserProficiency | null): Promise<AnalysisResult> => {
   console.log('Calling analyze-text Edge Function...');
   
-  const result = await callEdgeFunction('analyze-text', { text, sourceType });
+  const result = await callEdgeFunction('analyze-text', { 
+    text, 
+    sourceType,
+    proficiency: proficiency || null
+  });
   
   console.log('Analysis complete!');
   return result as AnalysisResult;
