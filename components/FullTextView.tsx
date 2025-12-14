@@ -1,8 +1,7 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { VocabularyItem, UserProficiency, KnownWord, EnglishTestType } from '../types';
-import { BookOpen, Target, TrendingUp, CheckCircle, HelpCircle, Loader2, Search } from 'lucide-react';
+import { BookOpen, Target, TrendingUp, CheckCircle, HelpCircle, Loader2 } from 'lucide-react';
 import WordPopup from './WordPopup';
-import { lookupWord } from '../services/geminiService';
 
 interface Props {
     originalText: string;
@@ -146,7 +145,6 @@ const FullTextView: React.FC<Props> = ({
     isLoading = false
 }) => {
     const [selectedWord, setSelectedWord] = useState<{ item: VocabularyItem; position: { x: number; y: number } } | null>(null);
-    const [customLookup, setCustomLookup] = useState<{ word: string; position: { x: number; y: number }; isLoading: boolean; definition?: string } | null>(null);
 
     // Build a map of terms to vocabulary items for quick lookup
     const vocabMap = useMemo(() => {
@@ -244,72 +242,6 @@ const FullTextView: React.FC<Props> = ({
     const handleMarkWord = (term: string, isKnown: boolean) => {
         const item = vocabMap.get(term.toLowerCase());
         onMarkWord(term, isKnown, item?.difficulty_level);
-    };
-
-    // Handle double-click on any text to look up a word
-    const handleTextDoubleClick = useCallback(async (event: React.MouseEvent) => {
-        event.preventDefault();
-        
-        // Get the selected text or word under cursor
-        const selection = window.getSelection();
-        let word = selection?.toString().trim();
-        
-        // If no selection, try to get word at click position
-        if (!word) {
-            const target = event.target as HTMLElement;
-            if (target.tagName === 'SPAN') {
-                const text = target.textContent || '';
-                // Get word at approximate position
-                const range = document.caretRangeFromPoint(event.clientX, event.clientY);
-                if (range) {
-                    range.expand('word');
-                    word = range.toString().trim();
-                }
-            }
-        }
-        
-        if (!word || word.length < 2 || word.length > 50) return;
-        
-        // Clean the word (remove punctuation)
-        word = word.replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, '');
-        if (!word) return;
-
-        // Check if this word is already in vocabulary
-        const existingItem = vocabMap.get(word.toLowerCase());
-        if (existingItem) {
-            setSelectedWord({
-                item: existingItem,
-                position: { x: event.clientX, y: event.clientY }
-            });
-            return;
-        }
-
-        // Look up the new word
-        setCustomLookup({
-            word,
-            position: { x: event.clientX, y: event.clientY },
-            isLoading: true
-        });
-
-        try {
-            const result = await lookupWord(word, '');
-            setCustomLookup(prev => prev ? {
-                ...prev,
-                isLoading: false,
-                definition: result.definition
-            } : null);
-        } catch (error) {
-            setCustomLookup(prev => prev ? {
-                ...prev,
-                isLoading: false,
-                definition: 'Could not find definition'
-            } : null);
-        }
-    }, [vocabMap]);
-
-    const handleMarkCustomWord = (word: string, isKnown: boolean) => {
-        onMarkWord(word, isKnown);
-        setCustomLookup(null);
     };
 
     if (isLoading) {
@@ -415,20 +347,13 @@ const FullTextView: React.FC<Props> = ({
                 </div>
             </div>
 
-            {/* Tip for custom word lookup */}
-            <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 px-3 py-2 rounded-lg">
-                <Search className="w-3.5 h-3.5" />
-                <span><strong>Tip:</strong> Double-click any word to look it up and mark it</span>
-            </div>
-
             {/* Full Text with Highlights */}
             <div 
                 className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden"
-                onClick={() => { setSelectedWord(null); setCustomLookup(null); }}
-                onDoubleClick={handleTextDoubleClick}
+                onClick={() => setSelectedWord(null)}
             >
                 {/* Render text with proper paragraph formatting */}
-                <div className="p-6 md:p-8 select-text cursor-text">
+                <div className="p-6 md:p-8">
                     {(() => {
                         // First, reconstruct the full text with markers for highlights
                         let fullText = '';
@@ -618,7 +543,7 @@ const FullTextView: React.FC<Props> = ({
                 </div>
             </div>
 
-            {/* Word Popup for vocabulary items */}
+            {/* Word Popup */}
             {selectedWord && (
                 <WordPopup
                     item={selectedWord.item}
@@ -628,74 +553,6 @@ const FullTextView: React.FC<Props> = ({
                     onMarkKnown={handleMarkWord}
                     proficiency={proficiency}
                 />
-            )}
-
-            {/* Custom Word Lookup Popup */}
-            {customLookup && (
-                <>
-                    <div 
-                        className="fixed inset-0 z-50" 
-                        onClick={() => setCustomLookup(null)}
-                    />
-                    <div 
-                        style={{
-                            position: 'fixed',
-                            left: Math.min(customLookup.position.x - 150, window.innerWidth - 320),
-                            top: Math.min(customLookup.position.y + 10, window.innerHeight - 280),
-                            zIndex: 100,
-                        }}
-                        className="z-50 w-[300px] bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden animate-fade-in"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {/* Header */}
-                        <div className="bg-indigo-900 text-white p-4">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-xl font-serif font-bold">{customLookup.word}</h3>
-                                <span className="text-xs bg-indigo-700 px-2 py-1 rounded">Custom lookup</span>
-                            </div>
-                        </div>
-
-                        {/* Definition */}
-                        <div className="p-4 border-b border-slate-100">
-                            {customLookup.isLoading ? (
-                                <div className="flex items-center gap-2 text-slate-500">
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    <span>Looking up definition...</span>
-                                </div>
-                            ) : (
-                                <p className="text-slate-700 leading-relaxed">{customLookup.definition}</p>
-                            )}
-                        </div>
-
-                        {/* Mark Known/Unknown Buttons */}
-                        {!customLookup.isLoading && (
-                            <div className="p-3 flex gap-2">
-                                <button
-                                    onClick={() => handleMarkCustomWord(customLookup.word, true)}
-                                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg font-medium text-sm transition-all ${
-                                        knownWords[customLookup.word.toLowerCase()]?.isKnown === true
-                                            ? 'bg-emerald-600 text-white'
-                                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
-                                    }`}
-                                >
-                                    <CheckCircle className="w-4 h-4" />
-                                    I know this
-                                </button>
-                                <button
-                                    onClick={() => handleMarkCustomWord(customLookup.word, false)}
-                                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg font-medium text-sm transition-all ${
-                                        knownWords[customLookup.word.toLowerCase()]?.isKnown === false
-                                            ? 'bg-red-600 text-white'
-                                            : 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
-                                    }`}
-                                >
-                                    <HelpCircle className="w-4 h-4" />
-                                    New to me
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </>
             )}
         </div>
     );
