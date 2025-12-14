@@ -391,10 +391,6 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleExportData = () => {
-    dataService.exportToJson(savedAnalyses, []);
-  };
-
   const processFile = (file: File | undefined) => {
     if (!file) return;
 
@@ -585,7 +581,6 @@ const AppContent: React.FC = () => {
         onRenameAnalysis={renameAnalysis}
         isOpen={isSidebarOpen}
         toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-        onExportData={handleExportData}
         onOpenHistory={() => setMode(AppMode.HISTORY)}
         isHistoryActive={mode === AppMode.HISTORY}
         proficiency={proficiency}

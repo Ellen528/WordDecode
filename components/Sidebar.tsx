@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { SavedAnalysis, UserProficiency } from '../types';
-import { Plus, MessageSquare, Trash2, ChevronLeft, Sparkles, LogOut, LogIn, Download, Cloud, CloudOff, History, FolderOpen, Check, X, Settings } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, ChevronLeft, Sparkles, LogOut, LogIn, Cloud, CloudOff, History, FolderOpen, Check, X, Settings } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import AuthModal from './AuthModal';
 import CalendarHeatmap from './CalendarHeatmap';
@@ -14,7 +14,6 @@ interface Props {
     onRenameAnalysis?: (id: string, newTitle: string) => void;
     isOpen: boolean;
     toggleSidebar: () => void;
-    onExportData?: () => void;
     onOpenHistory?: () => void;
     isHistoryActive?: boolean;
     proficiency: UserProficiency | null;
@@ -39,7 +38,7 @@ const getAnalysisDisplayName = (analysis: SavedAnalysis): string => {
     return firstSentence.substring(0, 37) + '...';
 };
 
-const Sidebar: React.FC<Props> = ({ savedAnalyses, onLoadAnalysis, onNewAnalysis, onRemoveAnalysis, onRenameAnalysis, isOpen, toggleSidebar, onExportData, onOpenHistory, isHistoryActive, proficiency, onSaveProficiency }) => {
+const Sidebar: React.FC<Props> = ({ savedAnalyses, onLoadAnalysis, onNewAnalysis, onRemoveAnalysis, onRenameAnalysis, isOpen, toggleSidebar, onOpenHistory, isHistoryActive, proficiency, onSaveProficiency }) => {
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
     const [isHeatmapOpen, setIsHeatmapOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -251,15 +250,6 @@ const Sidebar: React.FC<Props> = ({ savedAnalyses, onLoadAnalysis, onNewAnalysis
                             </span>
                         )}
                     </button>
-                    {onExportData && savedAnalyses.length > 0 && (
-                        <button
-                            onClick={onExportData}
-                            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 hover:text-white transition-all text-sm"
-                        >
-                            <Download className="w-4 h-4" />
-                            Export as JSON
-                        </button>
-                    )}
                 </div>
 
                 {/* Footer - User Section */}
