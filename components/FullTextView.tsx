@@ -374,11 +374,26 @@ const FullTextView: React.FC<Props> = ({
                             }
                         });
 
-                        // Clean the text: remove bullets, join lines
-                        let cleanedText = fullText;
-                        // Remove leading dashes, bullets, asterisks from lines
-                        cleanedText = cleanedText.replace(/^[\s]*[-•*]\s*/gm, '');
+                        // Detect title and separator pattern (e.g., "S05E01\n-----\nContent")
+                        // Look for a line of dashes (3 or more) that acts as separator
+                        const separatorPattern = /^(.+?)\n[-─—=]{3,}\n/s;
+                        const separatorMatch = fullText.match(separatorPattern);
+                        
+                        let titleText: string | null = null;
+                        let contentText = fullText;
+                        
+                        if (separatorMatch) {
+                            titleText = separatorMatch[1].trim();
+                            contentText = fullText.slice(separatorMatch[0].length);
+                        }
+
+                        // Clean the content text: remove bullets, join lines
+                        let cleanedText = contentText;
+                        // Remove leading dashes, bullets, asterisks from lines (but not separator lines)
+                        cleanedText = cleanedText.replace(/^[\s]*[-•*]\s+/gm, '');
                         cleanedText = cleanedText.replace(/^[\s]*\d+[.)]\s*/gm, '');
+                        // Remove any remaining separator lines
+                        cleanedText = cleanedText.replace(/^[-─—=]{3,}$/gm, '');
                         // Replace newlines with spaces
                         cleanedText = cleanedText.replace(/\n+/g, ' ');
                         // Collapse multiple spaces
@@ -488,15 +503,26 @@ const FullTextView: React.FC<Props> = ({
                         };
 
                         return (
-                            <article className="prose prose-lg max-w-none font-serif space-y-6">
-                                {paragraphs.map((para, pIdx) => (
-                                    <p 
-                                        key={`p-${pIdx}`} 
-                                        className="text-lg leading-relaxed text-slate-800 text-justify"
-                                    >
-                                        {renderParagraphWithHighlights(para, pIdx)}
-                                    </p>
-                                ))}
+                            <article className="prose prose-lg max-w-none font-serif">
+                                {/* Title and separator if detected */}
+                                {titleText && (
+                                    <div className="mb-6">
+                                        <h2 className="text-2xl font-bold text-slate-900 mb-3">{titleText}</h2>
+                                        <hr className="border-t-2 border-slate-300" />
+                                    </div>
+                                )}
+                                
+                                {/* Paragraphs */}
+                                <div className="space-y-6">
+                                    {paragraphs.map((para, pIdx) => (
+                                        <p 
+                                            key={`p-${pIdx}`} 
+                                            className="text-lg leading-relaxed text-slate-800 text-justify"
+                                        >
+                                            {renderParagraphWithHighlights(para, pIdx)}
+                                        </p>
+                                    ))}
+                                </div>
                             </article>
                         );
                     })()}
