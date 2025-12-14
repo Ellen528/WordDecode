@@ -517,7 +517,7 @@ export const dataService = {
   exportToJson(analyses: SavedAnalysis[], vocabulary: SavedVocabularyItem[]): void {
     const exportData = {
       exportDate: new Date().toISOString(),
-      appName: 'NativeNuance',
+      appName: 'WordDecode',
       version: '1.0',
       data: {
         analyses,

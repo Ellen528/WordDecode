@@ -71,9 +71,30 @@ const AppContent: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasLoadedCloudData = useRef(false);
 
+  // Migrate localStorage keys from old name to new name
+  const migrateLocalStorageKeys = useCallback(() => {
+    const keyMappings = [
+      ['wordDecode_analysisHistory', 'wordDecode_analysisHistory'],
+      ['wordDecode_analysisFolders', 'wordDecode_analysisFolders'],
+      ['wordDecode_proficiency', 'wordDecode_proficiency'],
+      ['wordDecode_knownWords', 'wordDecode_knownWords'],
+    ];
+    
+    keyMappings.forEach(([oldKey, newKey]) => {
+      const oldData = localStorage.getItem(oldKey);
+      if (oldData && !localStorage.getItem(newKey)) {
+        localStorage.setItem(newKey, oldData);
+        localStorage.removeItem(oldKey);
+      }
+    });
+  }, []);
+
   // Load data from localStorage
   const loadLocalData = useCallback(() => {
-    const savedAnalysesData = localStorage.getItem('nativeNuance_analysisHistory');
+    // First migrate any old keys
+    migrateLocalStorageKeys();
+
+    const savedAnalysesData = localStorage.getItem('wordDecode_analysisHistory');
     if (savedAnalysesData) {
       try {
         setSavedAnalyses(JSON.parse(savedAnalysesData));
@@ -82,7 +103,7 @@ const AppContent: React.FC = () => {
       }
     }
 
-    const savedFoldersData = localStorage.getItem('nativeNuance_analysisFolders');
+    const savedFoldersData = localStorage.getItem('wordDecode_analysisFolders');
     if (savedFoldersData) {
       try {
         setAnalysisFolders(JSON.parse(savedFoldersData));
@@ -92,7 +113,7 @@ const AppContent: React.FC = () => {
     }
 
     // Load proficiency from localStorage
-    const savedProficiency = localStorage.getItem('nativeNuance_proficiency');
+    const savedProficiency = localStorage.getItem('wordDecode_proficiency');
     if (savedProficiency) {
       try {
         setProficiency(JSON.parse(savedProficiency));
@@ -102,7 +123,7 @@ const AppContent: React.FC = () => {
     }
 
     // Load known words from localStorage
-    const savedKnownWords = localStorage.getItem('nativeNuance_knownWords');
+    const savedKnownWords = localStorage.getItem('wordDecode_knownWords');
     if (savedKnownWords) {
       try {
         setKnownWords(JSON.parse(savedKnownWords));
@@ -110,7 +131,7 @@ const AppContent: React.FC = () => {
         console.error("Failed to parse known words", e);
       }
     }
-  }, []);
+  }, [migrateLocalStorageKeys]);
 
   // Load data from Supabase
   const loadCloudData = useCallback(async (userId: string) => {
@@ -125,8 +146,8 @@ const AppContent: React.FC = () => {
       ]);
 
       // Merge with local data (cloud takes precedence)
-      const localAnalyses = JSON.parse(localStorage.getItem('nativeNuance_analysisHistory') || '[]');
-      const localFolders = JSON.parse(localStorage.getItem('nativeNuance_analysisFolders') || '[]');
+      const localAnalyses = JSON.parse(localStorage.getItem('wordDecode_analysisHistory') || '[]');
+      const localFolders = JSON.parse(localStorage.getItem('wordDecode_analysisFolders') || '[]');
 
       // Upload any local-only data to cloud
       if (localAnalyses.length > 0) {
@@ -146,8 +167,8 @@ const AppContent: React.FC = () => {
       setAnalysisFolders(mergedFolders);
 
       // Update localStorage with merged data
-      localStorage.setItem('nativeNuance_analysisHistory', JSON.stringify(mergedAnalyses));
-      localStorage.setItem('nativeNuance_analysisFolders', JSON.stringify(mergedFolders));
+      localStorage.setItem('wordDecode_analysisHistory', JSON.stringify(mergedAnalyses));
+      localStorage.setItem('wordDecode_analysisFolders', JSON.stringify(mergedFolders));
     } catch (error) {
       console.error('Error loading cloud data:', error);
       // Fall back to local data
@@ -203,7 +224,7 @@ const AppContent: React.FC = () => {
         a.id === existingAnalysis.id ? updatedAnalysis : a
       );
       setSavedAnalyses(newHistory);
-      localStorage.setItem('nativeNuance_analysisHistory', JSON.stringify(newHistory));
+      localStorage.setItem('wordDecode_analysisHistory', JSON.stringify(newHistory));
 
       // Sync to cloud if authenticated
       if (isAuthenticated && user) {
@@ -223,7 +244,7 @@ const AppContent: React.FC = () => {
 
       const newHistory = [newAnalysis, ...savedAnalyses];
       setSavedAnalyses(newHistory);
-      localStorage.setItem('nativeNuance_analysisHistory', JSON.stringify(newHistory));
+      localStorage.setItem('wordDecode_analysisHistory', JSON.stringify(newHistory));
 
       // Sync to cloud if authenticated
       if (isAuthenticated && user) {
@@ -245,7 +266,7 @@ const AppContent: React.FC = () => {
   const removeAnalysis = async (id: string) => {
     const newHistory = savedAnalyses.filter(a => a.id !== id);
     setSavedAnalyses(newHistory);
-    localStorage.setItem('nativeNuance_analysisHistory', JSON.stringify(newHistory));
+    localStorage.setItem('wordDecode_analysisHistory', JSON.stringify(newHistory));
 
     // Sync to cloud if authenticated
     if (isAuthenticated && user) {
@@ -269,7 +290,7 @@ const AppContent: React.FC = () => {
 
     const newFolders = [...analysisFolders, newFolder];
     setAnalysisFolders(newFolders);
-    localStorage.setItem('nativeNuance_analysisFolders', JSON.stringify(newFolders));
+    localStorage.setItem('wordDecode_analysisFolders', JSON.stringify(newFolders));
 
     if (isAuthenticated && user) {
       await dataService.createFolder(user.id, newFolder);
@@ -279,7 +300,7 @@ const AppContent: React.FC = () => {
   const updateFolder = async (folder: AnalysisFolder) => {
     const newFolders = analysisFolders.map(f => f.id === folder.id ? folder : f);
     setAnalysisFolders(newFolders);
-    localStorage.setItem('nativeNuance_analysisFolders', JSON.stringify(newFolders));
+    localStorage.setItem('wordDecode_analysisFolders', JSON.stringify(newFolders));
 
     if (isAuthenticated && user) {
       await dataService.updateFolder(user.id, folder);
@@ -290,14 +311,14 @@ const AppContent: React.FC = () => {
     // Remove folder
     const newFolders = analysisFolders.filter(f => f.id !== folderId);
     setAnalysisFolders(newFolders);
-    localStorage.setItem('nativeNuance_analysisFolders', JSON.stringify(newFolders));
+    localStorage.setItem('wordDecode_analysisFolders', JSON.stringify(newFolders));
 
     // Move analyses in this folder to uncategorized
     const newAnalyses = savedAnalyses.map(a => 
       a.folderId === folderId ? { ...a, folderId: null } : a
     );
     setSavedAnalyses(newAnalyses);
-    localStorage.setItem('nativeNuance_analysisHistory', JSON.stringify(newAnalyses));
+    localStorage.setItem('wordDecode_analysisHistory', JSON.stringify(newAnalyses));
 
     if (isAuthenticated && user) {
       await dataService.deleteFolder(user.id, folderId);
@@ -314,7 +335,7 @@ const AppContent: React.FC = () => {
       a.id === analysisId ? { ...a, folderId } : a
     );
     setSavedAnalyses(newAnalyses);
-    localStorage.setItem('nativeNuance_analysisHistory', JSON.stringify(newAnalyses));
+    localStorage.setItem('wordDecode_analysisHistory', JSON.stringify(newAnalyses));
 
     if (isAuthenticated && user) {
       await dataService.updateAnalysisFolder(user.id, analysisId, folderId);
@@ -326,7 +347,7 @@ const AppContent: React.FC = () => {
       a.id === analysisId ? { ...a, flashcardPassed: passed } : a
     );
     setSavedAnalyses(newAnalyses);
-    localStorage.setItem('nativeNuance_analysisHistory', JSON.stringify(newAnalyses));
+    localStorage.setItem('wordDecode_analysisHistory', JSON.stringify(newAnalyses));
 
     if (isAuthenticated && user) {
       await dataService.updateFlashcardPassed(user.id, analysisId, passed);
@@ -338,7 +359,7 @@ const AppContent: React.FC = () => {
       a.id === analysisId ? { ...a, title: newTitle } : a
     );
     setSavedAnalyses(newAnalyses);
-    localStorage.setItem('nativeNuance_analysisHistory', JSON.stringify(newAnalyses));
+    localStorage.setItem('wordDecode_analysisHistory', JSON.stringify(newAnalyses));
 
     if (isAuthenticated && user) {
       await dataService.updateAnalysisTitle(user.id, analysisId, newTitle);
@@ -347,7 +368,7 @@ const AppContent: React.FC = () => {
 
   const saveProficiency = (newProficiency: UserProficiency) => {
     setProficiency(newProficiency);
-    localStorage.setItem('nativeNuance_proficiency', JSON.stringify(newProficiency));
+    localStorage.setItem('wordDecode_proficiency', JSON.stringify(newProficiency));
     // Note: For cloud sync, we could store in user metadata or a user_preferences table
     // For now, proficiency is stored locally only
   };
@@ -364,7 +385,7 @@ const AppContent: React.FC = () => {
       }
     };
     setKnownWords(newKnownWords);
-    localStorage.setItem('nativeNuance_knownWords', JSON.stringify(newKnownWords));
+    localStorage.setItem('wordDecode_knownWords', JSON.stringify(newKnownWords));
   };
 
   const handleNewAnalysis = () => {

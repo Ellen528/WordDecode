@@ -119,7 +119,7 @@ const Sidebar: React.FC<Props> = ({ savedAnalyses, onLoadAnalysis, onNewAnalysis
                 <div className="p-4">
                     <div className="flex items-center gap-2 mb-6 px-2">
                         <Sparkles className="w-6 h-6 text-emerald-400" />
-                        <span className="font-serif font-bold text-white text-lg tracking-tight">NativeNuance</span>
+                        <span className="font-serif font-bold text-white text-lg tracking-tight">WordDecode</span>
                     </div>
 
                     <div className="space-y-2">
