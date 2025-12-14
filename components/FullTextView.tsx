@@ -217,13 +217,18 @@ const FullTextView: React.FC<Props> = ({
         return parts;
     }, [originalText, vocabulary, vocabMap]);
 
-    // Calculate stats
+    // Calculate stats (including user-marked words not in vocabulary)
     const stats = useMemo(() => {
-        const total = vocabulary.length;
-        const marked = vocabulary.filter(v => knownWords[v.term.toLowerCase()]).length;
+        const vocabTerms = new Set(vocabulary.map(v => v.term.toLowerCase()));
+        const userMarkedUnknown = Object.entries(knownWords)
+            .filter(([term, kw]) => kw.isKnown === false && !vocabTerms.has(term.toLowerCase()))
+            .length;
+        
+        const total = vocabulary.length + userMarkedUnknown;
+        const marked = vocabulary.filter(v => knownWords[v.term.toLowerCase()]).length + userMarkedUnknown;
         const known = vocabulary.filter(v => knownWords[v.term.toLowerCase()]?.isKnown).length;
-        const unknown = vocabulary.filter(v => knownWords[v.term.toLowerCase()]?.isKnown === false).length;
-        return { total, marked, known, unknown };
+        const unknown = vocabulary.filter(v => knownWords[v.term.toLowerCase()]?.isKnown === false).length + userMarkedUnknown;
+        return { total, marked, known, unknown, userMarkedUnknown };
     }, [vocabulary, knownWords]);
 
     const estimatedLevel = useMemo(() => 
@@ -444,13 +449,25 @@ const FullTextView: React.FC<Props> = ({
                             const elements: React.ReactNode[] = [];
                             let currentPos = 0;
                             
-                            // Sort vocab by term length (longest first) for this paragraph
-                            const sortedVocab = [...vocabulary].sort((a, b) => b.term.length - a.term.length);
+                            // Combine vocabulary items with user-marked unknown words
+                            const userMarkedWords: VocabularyItem[] = Object.entries(knownWords)
+                                .filter(([_, kw]) => kw.isKnown === false)
+                                .filter(([term, _]) => !vocabulary.some(v => v.term.toLowerCase() === term.toLowerCase()))
+                                .map(([term, kw]) => ({
+                                    term: kw.term,
+                                    definition: 'User-marked word',
+                                    category: 'topic_specific' as const,
+                                    examples: [],
+                                    difficulty_level: kw.difficulty_level,
+                                }));
+                            
+                            // Sort all terms by length (longest first) for this paragraph
+                            const allTerms = [...vocabulary, ...userMarkedWords].sort((a, b) => b.term.length - a.term.length);
                             
                             // Find all matches in this paragraph
-                            const matches: Array<{ start: number; end: number; item: VocabularyItem; text: string }> = [];
+                            const matches: Array<{ start: number; end: number; item: VocabularyItem; text: string; isUserMarked?: boolean }> = [];
                             
-                            sortedVocab.forEach(item => {
+                            allTerms.forEach(item => {
                                 const regex = new RegExp(`\\b${item.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
                                 let m;
                                 while ((m = regex.exec(paragraphText)) !== null) {
@@ -463,7 +480,8 @@ const FullTextView: React.FC<Props> = ({
                                             start: m.index,
                                             end: m.index + m[0].length,
                                             item,
-                                            text: m[0]
+                                            text: m[0],
+                                            isUserMarked: userMarkedWords.includes(item)
                                         });
                                     }
                                 }
@@ -538,8 +556,11 @@ const FullTextView: React.FC<Props> = ({
 
                 {/* Vocabulary count footer */}
                 <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 text-sm text-slate-500">
-                    <strong className="text-slate-700">{vocabulary.length}</strong> vocabulary items highlighted • 
-                    Click any highlighted word to see its definition
+                    <strong className="text-slate-700">{vocabulary.length}</strong> vocabulary items
+                    {stats.userMarkedUnknown > 0 && (
+                        <> + <strong className="text-rose-600">{stats.userMarkedUnknown}</strong> words you marked</>
+                    )}
+                    {' '}• Click highlighted words for definition • Select text to look up new words
                 </div>
             </div>
 
