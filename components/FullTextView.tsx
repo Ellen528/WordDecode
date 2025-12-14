@@ -220,7 +220,7 @@ const FullTextView: React.FC<Props> = ({
     // Calculate stats (including user-marked words not in vocabulary)
     const stats = useMemo(() => {
         const vocabTerms = new Set(vocabulary.map(v => v.term.toLowerCase()));
-        const userMarkedUnknown = Object.entries(knownWords)
+        const userMarkedUnknown = (Object.entries(knownWords) as [string, KnownWord][])
             .filter(([term, kw]) => kw.isKnown === false && !vocabTerms.has(term.toLowerCase()))
             .length;
         
@@ -450,10 +450,10 @@ const FullTextView: React.FC<Props> = ({
                             let currentPos = 0;
                             
                             // Combine vocabulary items with user-marked unknown words
-                            const userMarkedWords: VocabularyItem[] = Object.entries(knownWords)
+                            const userMarkedWords: VocabularyItem[] = (Object.entries(knownWords) as [string, KnownWord][])
                                 .filter(([_, kw]) => kw.isKnown === false)
                                 .filter(([term, _]) => !vocabulary.some(v => v.term.toLowerCase() === term.toLowerCase()))
-                                .map(([term, kw]) => ({
+                                .map(([_, kw]) => ({
                                     term: kw.term,
                                     definition: 'User-marked word',
                                     category: 'topic_specific' as const,
