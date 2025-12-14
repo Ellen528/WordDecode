@@ -646,14 +646,14 @@ const AppContent: React.FC = () => {
                     </div>
                     <h1 className="text-4xl md:text-5xl font-serif font-bold text-slate-900">
                       {mode === AppMode.ANALYZE_TEXT ? (
-                        <>Speak with <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-blue-600">Precision</span></>
+                        <>Decode <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-blue-600">Every Word</span></>
                       ) : (
                         <>Master Any <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">Scenario</span></>
                       )}
                     </h1>
                     <p className="text-lg text-slate-600 max-w-2xl mx-auto">
                       {mode === AppMode.ANALYZE_TEXT
-                        ? "Paste text or upload a file to extract native collocations and nuances without the fluff."
+                        ? "Paste any text to decode vocabulary at your level. Learn the words you need to fully understand it."
                         : "Select a topic to generate a strategic IELTS speaking structure and targeted vocabulary."
                       }
                     </p>
