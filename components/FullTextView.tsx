@@ -374,26 +374,34 @@ const FullTextView: React.FC<Props> = ({
                             }
                         });
 
-                        // Detect title and separator pattern (e.g., "S05E01\n-----\nContent")
-                        // Look for a line of dashes (3 or more) that acts as separator
-                        const separatorPattern = /^(.+?)\n[-─—=]{3,}\n/s;
-                        const separatorMatch = fullText.match(separatorPattern);
+                        // Detect title and separator pattern
+                        // Patterns: "Title\n-----\n" or "Title\n-----" or "Title-----" or "Title\n---"
+                        // Match: first line (short, like episode code), then separator dashes
+                        const separatorPatterns = [
+                            /^([^\n]{1,50})\n[-─—=]{3,}\n?/,    // Title\n-----\n
+                            /^([^\n]{1,50})[-─—=]{3,}\n/,       // Title-----\n
+                            /^([^\n]{1,50})\n[-─—=]{3,}/,       // Title\n-----
+                        ];
                         
                         let titleText: string | null = null;
                         let contentText = fullText;
                         
-                        if (separatorMatch) {
-                            titleText = separatorMatch[1].trim();
-                            contentText = fullText.slice(separatorMatch[0].length);
+                        for (const pattern of separatorPatterns) {
+                            const match = fullText.match(pattern);
+                            if (match) {
+                                titleText = match[1].trim();
+                                contentText = fullText.slice(match[0].length);
+                                break;
+                            }
                         }
 
                         // Clean the content text: remove bullets, join lines
                         let cleanedText = contentText;
-                        // Remove leading dashes, bullets, asterisks from lines (but not separator lines)
+                        // Remove separator lines at the start
+                        cleanedText = cleanedText.replace(/^[-─—=]{3,}\s*/gm, '');
+                        // Remove leading dashes, bullets, asterisks from lines
                         cleanedText = cleanedText.replace(/^[\s]*[-•*]\s+/gm, '');
                         cleanedText = cleanedText.replace(/^[\s]*\d+[.)]\s*/gm, '');
-                        // Remove any remaining separator lines
-                        cleanedText = cleanedText.replace(/^[-─—=]{3,}$/gm, '');
                         // Replace newlines with spaces
                         cleanedText = cleanedText.replace(/\n+/g, ' ');
                         // Collapse multiple spaces
