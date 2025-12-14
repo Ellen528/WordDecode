@@ -355,83 +355,132 @@ const FullTextView: React.FC<Props> = ({
                 {/* Render text with proper paragraph formatting */}
                 <div className="p-6 md:p-8">
                     {(() => {
-                        // Clean text: remove bullet-style formatting and join short lines
-                        const cleanTextSegment = (text: string): string => {
-                            // Remove leading dashes, bullets, asterisks, and numbers from lines
-                            let cleaned = text.replace(/^[\s]*[-•*]\s*/gm, '');
-                            cleaned = cleaned.replace(/^[\s]*\d+[.)]\s*/gm, '');
-                            // Replace single newlines with spaces (keep double newlines as paragraph breaks)
-                            cleaned = cleaned.replace(/(?<!\n)\n(?!\n)/g, ' ');
-                            // Collapse multiple spaces
-                            cleaned = cleaned.replace(/  +/g, ' ');
-                            return cleaned;
-                        };
+                        // First, reconstruct the full text with markers for highlights
+                        let fullText = '';
+                        const highlightPositions: Array<{ start: number; end: number; item: VocabularyItem; originalText: string }> = [];
+                        
+                        highlightedText.forEach(part => {
+                            if (part.type === 'text') {
+                                fullText += part.content;
+                            } else if (part.item) {
+                                const start = fullText.length;
+                                fullText += part.content;
+                                highlightPositions.push({
+                                    start,
+                                    end: fullText.length,
+                                    item: part.item,
+                                    originalText: part.content
+                                });
+                            }
+                        });
 
-                        // Render flowing paragraphs
-                        const renderContent = () => {
+                        // Clean the text: remove bullets, join lines
+                        let cleanedText = fullText;
+                        // Remove leading dashes, bullets, asterisks from lines
+                        cleanedText = cleanedText.replace(/^[\s]*[-•*]\s*/gm, '');
+                        cleanedText = cleanedText.replace(/^[\s]*\d+[.)]\s*/gm, '');
+                        // Replace newlines with spaces
+                        cleanedText = cleanedText.replace(/\n+/g, ' ');
+                        // Collapse multiple spaces
+                        cleanedText = cleanedText.replace(/  +/g, ' ').trim();
+
+                        // Split into sentences (approximately)
+                        const sentencePattern = /([^.!?]+[.!?]+\s*)/g;
+                        const sentences: string[] = [];
+                        let match;
+                        let lastIndex = 0;
+                        
+                        while ((match = sentencePattern.exec(cleanedText)) !== null) {
+                            sentences.push(match[1]);
+                            lastIndex = sentencePattern.lastIndex;
+                        }
+                        // Add any remaining text
+                        if (lastIndex < cleanedText.length) {
+                            const remaining = cleanedText.slice(lastIndex).trim();
+                            if (remaining) sentences.push(remaining);
+                        }
+
+                        // Group sentences into paragraphs (4-6 sentences each)
+                        const SENTENCES_PER_PARAGRAPH = 5;
+                        const paragraphs: string[] = [];
+                        
+                        for (let i = 0; i < sentences.length; i += SENTENCES_PER_PARAGRAPH) {
+                            const chunk = sentences.slice(i, i + SENTENCES_PER_PARAGRAPH);
+                            paragraphs.push(chunk.join('').trim());
+                        }
+
+                        // Now render each paragraph with highlights
+                        const renderParagraphWithHighlights = (paragraphText: string, pIdx: number) => {
+                            // Find position of this paragraph in cleaned text
+                            let searchStart = 0;
+                            for (let i = 0; i < pIdx; i++) {
+                                searchStart += paragraphs[i].length + 1; // +1 for space between paragraphs
+                            }
+
+                            // Build elements for this paragraph
                             const elements: React.ReactNode[] = [];
-                            let currentParagraph: React.ReactNode[] = [];
-                            let paragraphIndex = 0;
-
-                            highlightedText.forEach((part, idx) => {
-                                if (part.type === 'text') {
-                                    const cleanedContent = cleanTextSegment(part.content);
-                                    // Split by double newlines for paragraph breaks
-                                    const segments = cleanedContent.split(/\n\n+/);
-                                    
-                                    segments.forEach((segment, segIdx) => {
-                                        const trimmed = segment.trim();
-                                        if (!trimmed) {
-                                            // Empty segment = paragraph break
-                                            if (currentParagraph.length > 0) {
-                                                elements.push(
-                                                    <p key={`p-${paragraphIndex}`} className="text-lg leading-relaxed text-slate-800 mb-5 text-justify indent-8 first:indent-0">
-                                                        {currentParagraph}
-                                                    </p>
-                                                );
-                                                paragraphIndex++;
-                                                currentParagraph = [];
-                                            }
-                                        } else {
-                                            // Add text to current paragraph
-                                            if (segIdx > 0 && currentParagraph.length > 0) {
-                                                // New paragraph after break
-                                                elements.push(
-                                                    <p key={`p-${paragraphIndex}`} className="text-lg leading-relaxed text-slate-800 mb-5 text-justify indent-8 first:indent-0">
-                                                        {currentParagraph}
-                                                    </p>
-                                                );
-                                                paragraphIndex++;
-                                                currentParagraph = [];
-                                            }
-                                            currentParagraph.push(<span key={`t-${idx}-${segIdx}`}>{trimmed}</span>);
-                                        }
-                                    });
-                                } else {
-                                    const item = part.item!;
-                                    const knownStatus = knownWords[item.term.toLowerCase()];
-                                    const isKnown = knownStatus?.isKnown ?? null;
-                                    const highlightClass = getHighlightClass(item, isKnown, proficiency);
-
-                                    currentParagraph.push(
-                                        <span
-                                            key={`h-${idx}`}
-                                            onClick={(e) => handleWordClick(item, e)}
-                                            className={`cursor-pointer rounded px-1 py-0.5 transition-all hover:scale-105 ${highlightClass}`}
-                                            title={`${item.difficulty_level || 'Click for definition'}`}
-                                        >
-                                            {part.content}
-                                        </span>
+                            let currentPos = 0;
+                            
+                            // Sort vocab by term length (longest first) for this paragraph
+                            const sortedVocab = [...vocabulary].sort((a, b) => b.term.length - a.term.length);
+                            
+                            // Find all matches in this paragraph
+                            const matches: Array<{ start: number; end: number; item: VocabularyItem; text: string }> = [];
+                            
+                            sortedVocab.forEach(item => {
+                                const regex = new RegExp(`\\b${item.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+                                let m;
+                                while ((m = regex.exec(paragraphText)) !== null) {
+                                    // Check if this position overlaps with existing match
+                                    const overlaps = matches.some(existing => 
+                                        !(m.index >= existing.end || m.index + m[0].length <= existing.start)
                                     );
+                                    if (!overlaps) {
+                                        matches.push({
+                                            start: m.index,
+                                            end: m.index + m[0].length,
+                                            item,
+                                            text: m[0]
+                                        });
+                                    }
                                 }
                             });
 
-                            // Don't forget the last paragraph
-                            if (currentParagraph.length > 0) {
+                            // Sort matches by position
+                            matches.sort((a, b) => a.start - b.start);
+
+                            // Build paragraph content
+                            matches.forEach((match, mIdx) => {
+                                // Add text before this match
+                                if (match.start > currentPos) {
+                                    elements.push(
+                                        <span key={`t-${pIdx}-${mIdx}`}>{paragraphText.slice(currentPos, match.start)}</span>
+                                    );
+                                }
+
+                                // Add highlighted word
+                                const knownStatus = knownWords[match.item.term.toLowerCase()];
+                                const isKnown = knownStatus?.isKnown ?? null;
+                                const highlightClass = getHighlightClass(match.item, isKnown, proficiency);
+
                                 elements.push(
-                                    <p key={`p-${paragraphIndex}`} className="text-lg leading-relaxed text-slate-800 mb-5 text-justify indent-8 first:indent-0">
-                                        {currentParagraph}
-                                    </p>
+                                    <span
+                                        key={`h-${pIdx}-${mIdx}`}
+                                        onClick={(e) => handleWordClick(match.item, e)}
+                                        className={`cursor-pointer rounded px-1 py-0.5 transition-all hover:scale-105 ${highlightClass}`}
+                                        title={match.item.difficulty_level || 'Click for definition'}
+                                    >
+                                        {match.text}
+                                    </span>
+                                );
+
+                                currentPos = match.end;
+                            });
+
+                            // Add remaining text
+                            if (currentPos < paragraphText.length) {
+                                elements.push(
+                                    <span key={`t-${pIdx}-end`}>{paragraphText.slice(currentPos)}</span>
                                 );
                             }
 
@@ -439,8 +488,15 @@ const FullTextView: React.FC<Props> = ({
                         };
 
                         return (
-                            <article className="prose prose-lg max-w-none font-serif">
-                                {renderContent()}
+                            <article className="prose prose-lg max-w-none font-serif space-y-6">
+                                {paragraphs.map((para, pIdx) => (
+                                    <p 
+                                        key={`p-${pIdx}`} 
+                                        className="text-lg leading-relaxed text-slate-800 text-justify"
+                                    >
+                                        {renderParagraphWithHighlights(para, pIdx)}
+                                    </p>
+                                ))}
                             </article>
                         );
                     })()}
