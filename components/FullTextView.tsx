@@ -355,7 +355,19 @@ const FullTextView: React.FC<Props> = ({
                 {/* Render text with proper paragraph formatting */}
                 <div className="p-6 md:p-8">
                     {(() => {
-                        // Split highlighted content into paragraphs
+                        // Clean text: remove bullet-style formatting and join short lines
+                        const cleanTextSegment = (text: string): string => {
+                            // Remove leading dashes, bullets, asterisks, and numbers from lines
+                            let cleaned = text.replace(/^[\s]*[-•*]\s*/gm, '');
+                            cleaned = cleaned.replace(/^[\s]*\d+[.)]\s*/gm, '');
+                            // Replace single newlines with spaces (keep double newlines as paragraph breaks)
+                            cleaned = cleaned.replace(/(?<!\n)\n(?!\n)/g, ' ');
+                            // Collapse multiple spaces
+                            cleaned = cleaned.replace(/  +/g, ' ');
+                            return cleaned;
+                        };
+
+                        // Render flowing paragraphs
                         const renderContent = () => {
                             const elements: React.ReactNode[] = [];
                             let currentParagraph: React.ReactNode[] = [];
@@ -363,26 +375,36 @@ const FullTextView: React.FC<Props> = ({
 
                             highlightedText.forEach((part, idx) => {
                                 if (part.type === 'text') {
-                                    // Check for paragraph breaks (double newline or single newline)
-                                    const segments = part.content.split(/(\n\n|\n)/);
+                                    const cleanedContent = cleanTextSegment(part.content);
+                                    // Split by double newlines for paragraph breaks
+                                    const segments = cleanedContent.split(/\n\n+/);
+                                    
                                     segments.forEach((segment, segIdx) => {
-                                        if (segment === '\n\n' || segment === '\n') {
-                                            // End current paragraph, start new one
+                                        const trimmed = segment.trim();
+                                        if (!trimmed) {
+                                            // Empty segment = paragraph break
                                             if (currentParagraph.length > 0) {
                                                 elements.push(
-                                                    <p key={`p-${paragraphIndex}`} className="text-lg leading-loose text-slate-800 mb-6 first:mt-0 last:mb-0 text-justify">
+                                                    <p key={`p-${paragraphIndex}`} className="text-lg leading-relaxed text-slate-800 mb-5 text-justify indent-8 first:indent-0">
                                                         {currentParagraph}
                                                     </p>
                                                 );
                                                 paragraphIndex++;
                                                 currentParagraph = [];
                                             }
-                                            // Add extra space for double newline
-                                            if (segment === '\n\n') {
-                                                elements.push(<div key={`br-${paragraphIndex}-${segIdx}`} className="h-2" />);
+                                        } else {
+                                            // Add text to current paragraph
+                                            if (segIdx > 0 && currentParagraph.length > 0) {
+                                                // New paragraph after break
+                                                elements.push(
+                                                    <p key={`p-${paragraphIndex}`} className="text-lg leading-relaxed text-slate-800 mb-5 text-justify indent-8 first:indent-0">
+                                                        {currentParagraph}
+                                                    </p>
+                                                );
+                                                paragraphIndex++;
+                                                currentParagraph = [];
                                             }
-                                        } else if (segment) {
-                                            currentParagraph.push(<span key={`t-${idx}-${segIdx}`}>{segment}</span>);
+                                            currentParagraph.push(<span key={`t-${idx}-${segIdx}`}>{trimmed}</span>);
                                         }
                                     });
                                 } else {
@@ -395,7 +417,7 @@ const FullTextView: React.FC<Props> = ({
                                         <span
                                             key={`h-${idx}`}
                                             onClick={(e) => handleWordClick(item, e)}
-                                            className={`cursor-pointer rounded-sm px-1 py-0.5 mx-0.5 transition-all hover:scale-105 inline-block ${highlightClass}`}
+                                            className={`cursor-pointer rounded px-1 py-0.5 transition-all hover:scale-105 ${highlightClass}`}
                                             title={`${item.difficulty_level || 'Click for definition'}`}
                                         >
                                             {part.content}
@@ -407,7 +429,7 @@ const FullTextView: React.FC<Props> = ({
                             // Don't forget the last paragraph
                             if (currentParagraph.length > 0) {
                                 elements.push(
-                                    <p key={`p-${paragraphIndex}`} className="text-lg leading-loose text-slate-800 mb-6 first:mt-0 last:mb-0 text-justify">
+                                    <p key={`p-${paragraphIndex}`} className="text-lg leading-relaxed text-slate-800 mb-5 text-justify indent-8 first:indent-0">
                                         {currentParagraph}
                                     </p>
                                 );
