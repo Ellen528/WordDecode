@@ -343,11 +343,13 @@ const AppContent: React.FC = () => {
   };
 
   const updateFlashcardPassed = async (analysisId: string, passed: boolean) => {
-    const newAnalyses = savedAnalyses.map(a => 
-      a.id === analysisId ? { ...a, flashcardPassed: passed } : a
-    );
-    setSavedAnalyses(newAnalyses);
-    localStorage.setItem('wordDecode_analysisHistory', JSON.stringify(newAnalyses));
+    setSavedAnalyses(prevAnalyses => {
+      const newAnalyses = prevAnalyses.map(a => 
+        a.id === analysisId ? { ...a, flashcardPassed: passed } : a
+      );
+      localStorage.setItem('wordDecode_analysisHistory', JSON.stringify(newAnalyses));
+      return newAnalyses;
+    });
 
     if (isAuthenticated && user) {
       await dataService.updateFlashcardPassed(user.id, analysisId, passed);
