@@ -223,6 +223,25 @@ const AnalysisView: React.FC<Props> = ({
     }
   }, [showResults, correctCount, incorrectCount, data.vocabulary.length, analysisId, flashcardPassed, onUpdateFlashcardPassed]);
 
+  // Keyboard shortcut: Space to go to next card when answer is showing
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only when flashcard mode is open and answer is showing
+      if (!isFlashcardMode || !showAnswer) return;
+      
+      // Don't trigger if typing in input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
+      if (e.code === 'Space') {
+        e.preventDefault();
+        handleFlashcardNext();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFlashcardMode, showAnswer]);
+
   useEffect(() => {
     const handleSelection = () => {
       const selection = window.getSelection();

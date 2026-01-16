@@ -329,6 +329,25 @@ const HistoryView: React.FC<Props> = ({
     }
   }, [showResults, correctCount, incorrectCount, practiceAnalysis, onUpdateFlashcardPassed]);
 
+  // Keyboard shortcut: Space to go to next card when answer is showing
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only when practice modal is open and answer is showing
+      if (!practiceAnalysis || !showAnswer) return;
+      
+      // Don't trigger if typing in input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
+      if (e.code === 'Space') {
+        e.preventDefault();
+        nextCard();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [practiceAnalysis, showAnswer]);
+
   const prevCard = () => {
     if (flashcardIndex > 0) {
       setFlashcardIndex(prev => prev - 1);
