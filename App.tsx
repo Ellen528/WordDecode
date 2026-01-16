@@ -1,25 +1,18 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { analyzeText, generatePractice, generateTopicStrategy } from './services/geminiService';
+import { analyzeText, generatePractice } from './services/geminiService';
 import { AnalysisResult, SourceType, VocabularyItem, GeneratedPractice, AppMode, SavedAnalysis, Note, AnalysisFolder, UserProficiency, KnownWord } from './types';
 import AnalysisView from './components/AnalysisView';
 import PracticeView from './components/PracticeView';
 import HistoryView from './components/HistoryView';
+import FlashcardReview from './components/FlashcardReview';
 import Sidebar from './components/Sidebar';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { dataService } from './services/dataService';
-import { Sparkles, FileText, Tv, Book, Mail, Loader2, ArrowRight, AlertCircle, Layers, Upload, File as FileIcon, X, Menu } from 'lucide-react';
+import { Sparkles, FileText, Tv, Book, Mail, Loader2, ArrowRight, AlertCircle, Upload, File as FileIcon, X, Menu, GraduationCap } from 'lucide-react';
 
 // Example text for quick start
 const EXAMPLE_TEXT = `While the tech giant's quarterly earnings beat expectations, the lukewarm guidance for Q4 sent shares tumbling in after-hours trading. Analysts cite saturating markets and headwinds in the supply chain as key factors dampening investor sentiment. However, bulls argue that the company's pivot to AI infrastructure is a long-term play that hasn't yet been priced in by the broader market.`;
-
-const PRESET_TOPICS = [
-  "Describe a challenging situation at work",
-  "Discuss the impact of social media",
-  "Describe a traditional festival in your country",
-  "Talk about a book that influenced you",
-  "Discuss the future of remote work"
-];
 
 const BATCH_SIZE = 5;
 
@@ -33,9 +26,6 @@ const AppContent: React.FC = () => {
   const [sourceType, setSourceType] = useState<SourceType>(SourceType.NEWS);
   const [fileName, setFileName] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-
-  // Topic Strategy State
-  const [topicInput, setTopicInput] = useState('');
 
   // Sidebar State
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -169,6 +159,13 @@ const AppContent: React.FC = () => {
       // Update localStorage with merged data
       localStorage.setItem('wordDecode_analysisHistory', JSON.stringify(mergedAnalyses));
       localStorage.setItem('wordDecode_analysisFolders', JSON.stringify(mergedFolders));
+
+      // Sync vocabulary from analyses to the review system (for spaced repetition)
+      if (mergedAnalyses.length > 0) {
+        dataService.syncVocabFromAnalyses(userId, mergedAnalyses).catch(err => {
+          console.error('Error syncing vocabulary to review system:', err);
+        });
+      }
     } catch (error) {
       console.error('Error loading cloud data:', error);
       // Fall back to local data
@@ -249,6 +246,10 @@ const AppContent: React.FC = () => {
       // Sync to cloud if authenticated
       if (isAuthenticated && user) {
         await dataService.saveAnalysis(user.id, newAnalysis);
+        // Also sync vocabulary to the review system for spaced repetition
+        dataService.syncVocabFromAnalyses(user.id, [newAnalysis]).catch(err => {
+          console.error('Error syncing vocabulary to review system:', err);
+        });
       }
     }
   };
@@ -497,26 +498,6 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleTopicStrategy = async () => {
-    if (!topicInput.trim()) return;
-
-    setStatus('analyzing');
-    setError(null);
-    setAnalysisResult(null);
-
-    try {
-      const result = await generateTopicStrategy(topicInput);
-      setAnalysisResult(result);
-      setStatus('complete');
-      setTimeout(() => {
-        resultRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
-    } catch (e) {
-      setError("Failed to generate strategy. Please try again.");
-      setStatus('idle');
-    }
-  };
-
   // Initial Practice Generation
   const handleGeneratePractice = async (selectedVocab: VocabularyItem[]) => {
     setStatus('practicing');
@@ -573,10 +554,6 @@ const AppContent: React.FC = () => {
     setInputText(EXAMPLE_TEXT);
     setSourceType(SourceType.NEWS);
     setFileName(null);
-  };
-
-  const handleTopicClick = (topic: string) => {
-    setTopicInput(topic);
   };
 
   const isNextAvailable = practiceQueue.length > 0 && practiceIndex < practiceQueue.length;
@@ -650,13 +627,13 @@ const AppContent: React.FC = () => {
                       {mode === AppMode.ANALYZE_TEXT ? (
                         <>Decode <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-blue-600">Every Word</span></>
                       ) : (
-                        <>Master Any <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">Scenario</span></>
+                        <>Master Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">Vocabulary</span></>
                       )}
                     </h1>
                     <p className="text-lg text-slate-600 max-w-2xl mx-auto">
                       {mode === AppMode.ANALYZE_TEXT
                         ? "Paste any text to decode vocabulary at your level. Learn the words you need to fully understand it."
-                        : "Select a topic to generate a strategic IELTS speaking structure and targeted vocabulary."
+                        : "Review your vocabulary with spaced repetition. Learn efficiently with scientifically-proven intervals."
                       }
                     </p>
 
@@ -668,10 +645,11 @@ const AppContent: React.FC = () => {
                         Text Analysis
                       </button>
                       <button
-                        onClick={() => setMode(AppMode.TOPIC_STRATEGY)}
-                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${mode === AppMode.TOPIC_STRATEGY ? 'bg-slate-200 text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
+                        onClick={() => setMode(AppMode.FLASHCARD_REVIEW)}
+                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1 ${mode === AppMode.FLASHCARD_REVIEW ? 'bg-slate-200 text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
                       >
-                        Topic Strategy
+                        <GraduationCap className="w-4 h-4" />
+                        Flashcard Review
                       </button>
                     </div>
                   </div>
@@ -764,38 +742,17 @@ const AppContent: React.FC = () => {
                       </>
                     )}
 
-                    {mode === AppMode.TOPIC_STRATEGY && (
-                      <div className="p-6">
-                        <div className="mb-4 flex gap-2 flex-wrap">
-                          {PRESET_TOPICS.map((topic, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => handleTopicClick(topic)}
-                              className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-medium hover:bg-indigo-100 transition-colors"
-                            >
-                              {topic}
-                            </button>
-                          ))}
-                        </div>
-                        <input
-                          type="text"
-                          value={topicInput}
-                          onChange={(e) => setTopicInput(e.target.value)}
-                          placeholder="Enter a topic (e.g. 'Describing a traditional wedding')"
-                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-sans text-lg outline-none transition-shadow"
-                          onKeyDown={(e) => e.key === 'Enter' && handleTopicStrategy()}
-                        />
-                        <div className="flex justify-end mt-4">
-                          <button
-                            onClick={handleTopicStrategy}
-                            disabled={status === 'analyzing' || !topicInput.trim()}
-                            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-white transition-all ${status === 'analyzing' || !topicInput.trim() ? 'bg-slate-300' : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg'
-                              }`}
-                          >
-                            {status === 'analyzing' ? <Loader2 className="animate-spin" /> : <Layers />}
-                            Generate Strategy
-                          </button>
-                        </div>
+                    {mode === AppMode.FLASHCARD_REVIEW && user && (
+                      <FlashcardReview userId={user.id} savedAnalyses={savedAnalyses} />
+                    )}
+
+                    {mode === AppMode.FLASHCARD_REVIEW && !user && (
+                      <div className="p-8 text-center">
+                        <GraduationCap className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+                        <h3 className="text-lg font-bold text-slate-700 mb-2">Sign in to access Flashcard Review</h3>
+                        <p className="text-slate-500">
+                          Flashcard review with spaced repetition requires an account to track your progress across sessions.
+                        </p>
                       </div>
                     )}
 

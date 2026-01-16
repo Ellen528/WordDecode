@@ -8,7 +8,7 @@ export enum SourceType {
 
 export enum AppMode {
   ANALYZE_TEXT = 'analyze_text',
-  TOPIC_STRATEGY = 'topic_strategy',
+  FLASHCARD_REVIEW = 'flashcard_review',
   HISTORY = 'history'
 }
 
@@ -120,4 +120,69 @@ export interface KnownWord {
   isKnown: boolean;
   difficulty_level?: string;
   markedAt: number;
+}
+
+// ==================== SPACED REPETITION (SM-2) ====================
+
+// SM-2 Review Quality Rating (0-5 scale)
+// 0: Complete blackout, no recall
+// 1: Wrong answer, but recognized correct one
+// 2: Wrong answer, correct seemed easy to recall
+// 3: Correct with difficulty
+// 4: Correct with hesitation
+// 5: Perfect recall
+export type ReviewQuality = 0 | 1 | 2 | 3 | 4 | 5;
+
+// Simplified quality for UI (maps to SM-2 qualities)
+export type SimpleQuality = 'again' | 'hard' | 'good' | 'easy';
+
+export interface VocabularyReview {
+  id: string;
+  term: string;
+  definition: string;
+  sourceAnalysisId?: string;
+  // SM-2 algorithm parameters
+  easeFactor: number;      // >= 1.3, starts at 2.5
+  interval: number;        // days until next review
+  repetitions: number;     // successful reviews in a row
+  nextReviewDate: Date;
+  lastReviewDate?: Date;
+  // User actions
+  isSuspended: boolean;    // "don't show again"
+  isMastered: boolean;     // achieved mastery (e.g., interval > 21 days)
+  // Statistics
+  correctCount: number;
+  incorrectCount: number;
+  createdAt: Date;
+  // Vocabulary metadata (for display)
+  category?: VocabularyCategory;
+  sourceContext?: string;
+  examples?: DetailedExample[];
+  imageryEtymology?: string;
+  difficultyLevel?: string;
+}
+
+export interface ReviewStats {
+  totalWords: number;       // All words in the system
+  masteredWords: number;    // Words with interval > 21 days
+  learningWords: number;    // Words being actively learned
+  newWords: number;         // Words never reviewed
+  dueToday: number;         // Words due for review today
+  suspendedWords: number;   // Words marked "don't show"
+  masteryPercentage: number; // (mastered / total) * 100
+}
+
+export interface ReviewSessionConfig {
+  totalCards: number;       // How many cards to review
+  newCardsLimit: number;    // Max new cards to include
+  includeNew: boolean;      // Include new/unreviewed words
+  includeDue: boolean;      // Include due reviews
+}
+
+export interface ReviewSessionResult {
+  cardsReviewed: number;
+  correctCount: number;
+  incorrectCount: number;
+  newCardsLearned: number;
+  averageQuality: number;
 }

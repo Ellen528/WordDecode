@@ -49,17 +49,6 @@ export const analyzeText = async (
   return result as AnalysisResult;
 };
 
-// --- Topic Strategy (Structure + Vocab) ---
-
-export const generateTopicStrategy = async (topic: string): Promise<AnalysisResult> => {
-  console.log('Calling generate-strategy Edge Function...');
-  
-  const result = await callEdgeFunction('generate-strategy', { topic });
-  
-  console.log('Strategy generation complete!');
-  return result as AnalysisResult;
-};
-
 // --- Practice Generation ---
 
 export const generatePractice = async (vocabulary: VocabularyItem[]): Promise<GeneratedPractice> => {
