@@ -1,15 +1,18 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { analyzeText, generatePractice } from './services/geminiService';
-import { AnalysisResult, SourceType, VocabularyItem, GeneratedPractice, AppMode, SavedAnalysis, Note, AnalysisFolder, UserProficiency, KnownWord } from './types';
+import { analyzeText, generatePractice, extractBookStructure } from './services/geminiService';
+import { AnalysisResult, SourceType, VocabularyItem, GeneratedPractice, AppMode, SavedAnalysis, Note, AnalysisFolder, UserProficiency, KnownWord, SavedBook } from './types';
 import AnalysisView from './components/AnalysisView';
 import PracticeView from './components/PracticeView';
 import HistoryView from './components/HistoryView';
 import FlashcardReview from './components/FlashcardReview';
+import BookLibrary from './components/BookLibrary';
+import BookCatalog from './components/BookCatalog';
 import Sidebar from './components/Sidebar';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { dataService } from './services/dataService';
-import { Sparkles, FileText, Tv, Book, Mail, Loader2, ArrowRight, AlertCircle, Upload, File as FileIcon, X, Menu, GraduationCap } from 'lucide-react';
+import { parsePDF, isPDFFile } from './services/pdfService';
+import { Sparkles, FileText, Tv, Book, Mail, Loader2, ArrowRight, AlertCircle, Upload, File as FileIcon, X, Menu, GraduationCap, Library } from 'lucide-react';
 
 // Example text for quick start
 const EXAMPLE_TEXT = `While the tech giant's quarterly earnings beat expectations, the lukewarm guidance for Q4 sent shares tumbling in after-hours trading. Analysts cite saturating markets and headwinds in the supply chain as key factors dampening investor sentiment. However, bulls argue that the company's pivot to AI infrastructure is a long-term play that hasn't yet been priced in by the broader market.`;
@@ -57,8 +60,13 @@ const AppContent: React.FC = () => {
   const [comprehensiveVocab, setComprehensiveVocab] = useState<VocabularyItem[]>([]);
   const [isLoadingComprehensive, setIsLoadingComprehensive] = useState(false);
 
+  // Book Reader State
+  const [currentBook, setCurrentBook] = useState<SavedBook | null>(null);
+  const [isExtractingStructure, setIsExtractingStructure] = useState(false);
+
   const resultRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bookFileInputRef = useRef<HTMLInputElement>(null);
   const hasLoadedCloudData = useRef(false);
 
   // Migrate localStorage keys from old name to new name
@@ -415,22 +423,43 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const processFile = (file: File | undefined) => {
+  const [isProcessingFile, setIsProcessingFile] = useState(false);
+
+  const processFile = async (file: File | undefined) => {
     if (!file) return;
 
-    // Check for unsupported binary formats common in reading
+    // Check for unsupported binary formats
     if (
-      file.type.includes('pdf') ||
-      file.name.toLowerCase().endsWith('.pdf') ||
       file.name.toLowerCase().endsWith('.epub') ||
       file.name.toLowerCase().endsWith('.mobi') ||
       file.name.toLowerCase().endsWith('.doc') ||
       file.name.toLowerCase().endsWith('.docx')
     ) {
-      setError("Sorry, only plain text files (.txt, .md, .srt, .csv, .json) are supported right now. Please save your document as text first.");
+      setError("Sorry, EPUB, MOBI, and Word documents are not supported yet. Please use PDF or plain text files (.txt, .md).");
       return;
     }
 
+    // Handle PDF files
+    if (isPDFFile(file)) {
+      setIsProcessingFile(true);
+      setError(null);
+      try {
+        const result = await parsePDF(file);
+        setInputText(result.text);
+        setFileName(file.name);
+        // Auto-select Book Chapter source type for PDFs
+        setSourceType(SourceType.BOOK);
+        setError(null);
+      } catch (err) {
+        console.error('PDF parsing error:', err);
+        setError("Failed to read PDF. The file might be password-protected or corrupted.");
+      } finally {
+        setIsProcessingFile(false);
+      }
+      return;
+    }
+
+    // Handle plain text files
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target?.result;
@@ -454,6 +483,81 @@ const AppContent: React.FC = () => {
 
   const triggerFileUpload = () => {
     fileInputRef.current?.click();
+  };
+
+  // Book upload and processing
+  const processBookPDF = async (file: File) => {
+    if (!file || !user) return;
+
+    if (!isPDFFile(file)) {
+      setError("Please upload a PDF file for book reading mode.");
+      return;
+    }
+
+    setIsExtractingStructure(true);
+    setError(null);
+
+    try {
+      // Parse the PDF
+      const pdfResult = await parsePDF(file);
+
+      // Extract book structure using AI with full text
+      const structureResult = await extractBookStructure(pdfResult.text, pdfResult.pageCount);
+
+      // Create the book object
+      const newBook: Omit<SavedBook, 'id' | 'userId'> = {
+        title: structureResult.title || pdfResult.metadata?.title || file.name.replace('.pdf', ''),
+        author: structureResult.author || pdfResult.metadata?.author,
+        bookSubject: structureResult.bookSubject,  // Store book subject from AI extraction
+        fileName: file.name,
+        pageCount: pdfResult.pageCount,
+        structure: structureResult.structure,
+        rawText: pdfResult.text,
+        createdAt: Date.now(),
+        lastOpenedAt: Date.now(),
+      };
+
+      // Save to database
+      const savedBook = await dataService.saveBook(user.id, newBook);
+      
+      if (savedBook) {
+        setCurrentBook(savedBook);
+        setMode(AppMode.BOOK_READER);
+      } else {
+        throw new Error('Failed to save book');
+      }
+    } catch (err) {
+      console.error('Book processing error:', err);
+      setError("Failed to process book. Please try again.");
+    } finally {
+      setIsExtractingStructure(false);
+    }
+  };
+
+  const handleBookFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      processBookPDF(file);
+    }
+    event.target.value = ''; // Reset
+  };
+
+  const triggerBookUpload = () => {
+    bookFileInputRef.current?.click();
+  };
+
+  const handleSelectBook = async (book: SavedBook) => {
+    setCurrentBook(book);
+    setMode(AppMode.BOOK_READER);
+  };
+
+  const handleBookUpdate = (updatedBook: SavedBook) => {
+    setCurrentBook(updatedBook);
+  };
+
+  const handleBackToLibrary = () => {
+    setCurrentBook(null);
+    // Stay in BOOK_READER mode to show library
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -615,7 +719,19 @@ const AppContent: React.FC = () => {
               />
             )}
 
-            {mode !== AppMode.HISTORY && (
+            {mode === AppMode.BOOK_READER && currentBook && user && (
+              <div className="h-full -mx-4 sm:-mx-6 lg:-mx-8 -my-8">
+                <BookCatalog
+                  book={currentBook}
+                  userId={user.id}
+                  proficiency={proficiency}
+                  onBack={handleBackToLibrary}
+                  onBookUpdate={handleBookUpdate}
+                />
+              </div>
+            )}
+
+            {mode !== AppMode.HISTORY && !(mode === AppMode.BOOK_READER && currentBook) && (
               <div className={`mx-auto transition-all duration-500 ${analysisResult ? 'w-full' : 'max-w-3xl mt-[10vh]'}`}>
 
                 {!analysisResult && (
@@ -643,6 +759,13 @@ const AppContent: React.FC = () => {
                         className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${mode === AppMode.ANALYZE_TEXT ? 'bg-slate-200 text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
                       >
                         Text Analysis
+                      </button>
+                      <button
+                        onClick={() => setMode(AppMode.BOOK_READER)}
+                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1 ${mode === AppMode.BOOK_READER ? 'bg-slate-200 text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
+                      >
+                        <Library className="w-4 h-4" />
+                        Book Library
                       </button>
                       <button
                         onClick={() => setMode(AppMode.FLASHCARD_REVIEW)}
@@ -697,12 +820,20 @@ const AppContent: React.FC = () => {
                               </div>
                             )}
 
-                            <textarea
-                              value={inputText}
-                              onChange={(e) => setInputText(e.target.value)}
-                              placeholder={isDragging ? "Drop file here to read..." : "Paste your text here, drop a file, or use the upload button below..."}
-                              className={`w-full h-64 p-4 bg-slate-50 border rounded-xl resize-none font-sans text-base outline-none transition-shadow ${isDragging ? 'bg-indigo-50 border-indigo-300' : 'border-slate-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent'}`}
-                            />
+                            {isProcessingFile ? (
+                              <div className="w-full h-64 p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center justify-center gap-3">
+                                <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                                <p className="text-slate-600 font-medium">Processing PDF...</p>
+                                <p className="text-slate-400 text-sm">Extracting text from document</p>
+                              </div>
+                            ) : (
+                              <textarea
+                                value={inputText}
+                                onChange={(e) => setInputText(e.target.value)}
+                                placeholder={isDragging ? "Drop file here to read..." : "Paste your text here, drop a file (including PDF), or use the upload button below..."}
+                                className={`w-full h-64 p-4 bg-slate-50 border rounded-xl resize-none font-sans text-base outline-none transition-shadow ${isDragging ? 'bg-indigo-50 border-indigo-300' : 'border-slate-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent'}`}
+                              />
+                            )}
                           </div>
 
                           <div className="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4 sm:gap-0">
@@ -716,7 +847,7 @@ const AppContent: React.FC = () => {
                                 type="file"
                                 ref={fileInputRef}
                                 onChange={handleFileUpload}
-                                accept=".txt,.md,.srt,.csv,.json,.vtt"
+                                accept=".txt,.md,.srt,.csv,.json,.vtt,.pdf"
                                 className="hidden"
                               />
                               <button
@@ -752,6 +883,43 @@ const AppContent: React.FC = () => {
                         <h3 className="text-lg font-bold text-slate-700 mb-2">Sign in to access Flashcard Review</h3>
                         <p className="text-slate-500">
                           Flashcard review with spaced repetition requires an account to track your progress across sessions.
+                        </p>
+                      </div>
+                    )}
+
+                    {mode === AppMode.BOOK_READER && user && !currentBook && (
+                      <>
+                        {isExtractingStructure ? (
+                          <div className="p-12 text-center">
+                            <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mx-auto mb-4" />
+                            <h3 className="text-lg font-bold text-slate-700 mb-2">Analyzing Book Structure...</h3>
+                            <p className="text-slate-500">
+                              Extracting chapters and units from your book
+                            </p>
+                          </div>
+                        ) : (
+                          <BookLibrary 
+                            userId={user.id} 
+                            onSelectBook={handleSelectBook}
+                            onUploadNew={triggerBookUpload}
+                          />
+                        )}
+                        <input
+                          type="file"
+                          ref={bookFileInputRef}
+                          onChange={handleBookFileUpload}
+                          accept=".pdf"
+                          className="hidden"
+                        />
+                      </>
+                    )}
+
+                    {mode === AppMode.BOOK_READER && !user && (
+                      <div className="p-8 text-center">
+                        <Library className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+                        <h3 className="text-lg font-bold text-slate-700 mb-2">Sign in to access Book Library</h3>
+                        <p className="text-slate-500">
+                          Book library with chapter-based learning requires an account to save your progress.
                         </p>
                       </div>
                     )}

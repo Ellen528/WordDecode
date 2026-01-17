@@ -9,7 +9,8 @@ export enum SourceType {
 export enum AppMode {
   ANALYZE_TEXT = 'analyze_text',
   FLASHCARD_REVIEW = 'flashcard_review',
-  HISTORY = 'history'
+  HISTORY = 'history',
+  BOOK_READER = 'book_reader'
 }
 
 // English proficiency test types
@@ -185,4 +186,43 @@ export interface ReviewSessionResult {
   incorrectCount: number;
   newCardsLearned: number;
   averageQuality: number;
+}
+
+// ==================== EBOOK LIBRARY ====================
+
+// Hierarchical chapter structure for books
+export interface BookChapter {
+  id: string;
+  title: string;
+  level: number;           // 1 = category/part, 2 = chapter/unit, 3 = sub-section
+  pageStart?: number;      // Starting page in PDF
+  pageEnd?: number;        // Ending page in PDF
+  content?: string;        // Extracted text for this chapter (lazy loaded)
+  vocabulary?: VocabularyItem[]; // Extracted vocabulary (lazy loaded)
+  isStudied?: boolean;     // User has studied this chapter
+  children?: BookChapter[]; // Nested chapters/units
+}
+
+// Progress tracking for a book chapter
+export interface ChapterProgress {
+  chapterId: string;
+  isStudied: boolean;
+  vocabularyExtracted: boolean;
+  lastOpenedAt?: number;
+}
+
+// Saved book with structure and metadata
+export interface SavedBook {
+  id: string;
+  userId: string;
+  title: string;
+  author?: string;
+  bookSubject?: string;         // What the book teaches (e.g., "phrasal verbs", "idioms")
+  fileName: string;
+  pageCount: number;
+  structure: BookChapter[];     // Hierarchical TOC
+  rawText: string;              // Full PDF text (for extraction)
+  progress?: ChapterProgress[]; // Per-chapter progress
+  createdAt: number;
+  lastOpenedAt?: number;
 }

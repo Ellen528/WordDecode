@@ -13,6 +13,18 @@ export default defineConfig(() => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
-      }
+      },
+      optimizeDeps: {
+        include: ['pdfjs-dist'],
+      },
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              pdfjs: ['pdfjs-dist'],
+            },
+          },
+        },
+      },
     };
 });

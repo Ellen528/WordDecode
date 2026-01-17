@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { SavedAnalysis, SavedVocabularyItem, SourceType, Note, AnalysisFolder, VocabularyReview, ReviewStats, VocabularyItem, DetailedExample, VocabularyCategory } from '../types';
+import { SavedAnalysis, SavedVocabularyItem, SourceType, Note, AnalysisFolder, VocabularyReview, ReviewStats, VocabularyItem, DetailedExample, VocabularyCategory, SavedBook, BookChapter, ChapterProgress } from '../types';
 import { calculateNextReview, simpleToSM2Quality, createNewReview } from './sm2Algorithm';
 import type { ReviewQuality, SimpleQuality } from '../types';
 
@@ -1058,5 +1058,277 @@ export const dataService = {
 
     return true;
   },
+
+  // ==================== BOOK LIBRARY ====================
+
+  /**
+   * Fetch all saved books for a user
+   */
+  async fetchBooks(userId: string): Promise<SavedBook[]> {
+    if (!supabase) return [];
+
+    const { data, error } = await supabase
+      .from('saved_books')
+      .select('*')
+      .eq('user_id', userId)
+      .order('last_opened_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching books:', error);
+      return [];
+    }
+
+    return (data || []).map((row: DbSavedBook) => dbToBook(row));
+  },
+
+  /**
+   * Fetch a single book by ID
+   */
+  async fetchBook(userId: string, bookId: string): Promise<SavedBook | null> {
+    if (!supabase) return null;
+
+    const { data, error } = await supabase
+      .from('saved_books')
+      .select('*')
+      .eq('id', bookId)
+      .eq('user_id', userId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching book:', error);
+      return null;
+    }
+
+    return data ? dbToBook(data) : null;
+  },
+
+  /**
+   * Save a new book
+   */
+  async saveBook(userId: string, book: Omit<SavedBook, 'id' | 'userId'>): Promise<SavedBook | null> {
+    if (!supabase) return null;
+
+    const dbBook = {
+      user_id: userId,
+      title: book.title,
+      author: book.author || null,
+      book_subject: book.bookSubject || null,
+      file_name: book.fileName,
+      page_count: book.pageCount,
+      structure: book.structure,
+      raw_text: book.rawText,
+      page_texts: [], // Will be populated if needed
+      progress: book.progress || [],
+      created_at: new Date(book.createdAt).toISOString(),
+      last_opened_at: new Date(book.lastOpenedAt || book.createdAt).toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from('saved_books')
+      .insert(dbBook)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error saving book:', error);
+      return null;
+    }
+
+    return data ? dbToBook(data) : null;
+  },
+
+  /**
+   * Update a book (e.g., structure, progress)
+   */
+  async updateBook(userId: string, bookId: string, updates: Partial<SavedBook>): Promise<boolean> {
+    if (!supabase) return false;
+
+    const dbUpdates: Record<string, unknown> = {};
+    if (updates.title !== undefined) dbUpdates.title = updates.title;
+    if (updates.author !== undefined) dbUpdates.author = updates.author;
+    if (updates.bookSubject !== undefined) dbUpdates.book_subject = updates.bookSubject;
+    if (updates.structure !== undefined) dbUpdates.structure = updates.structure;
+    if (updates.progress !== undefined) dbUpdates.progress = updates.progress;
+    if (updates.lastOpenedAt !== undefined) dbUpdates.last_opened_at = new Date(updates.lastOpenedAt).toISOString();
+
+    const { error } = await supabase
+      .from('saved_books')
+      .update(dbUpdates)
+      .eq('id', bookId)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error updating book:', error);
+      return false;
+    }
+
+    return true;
+  },
+
+  /**
+   * Update last opened timestamp
+   */
+  async updateBookLastOpened(userId: string, bookId: string): Promise<boolean> {
+    if (!supabase) return false;
+
+    const { error } = await supabase
+      .from('saved_books')
+      .update({ last_opened_at: new Date().toISOString() })
+      .eq('id', bookId)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error updating book last opened:', error);
+      return false;
+    }
+
+    return true;
+  },
+
+  /**
+   * Delete a book
+   */
+  async deleteBook(userId: string, bookId: string): Promise<boolean> {
+    if (!supabase) return false;
+
+    const { error } = await supabase
+      .from('saved_books')
+      .delete()
+      .eq('id', bookId)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error deleting book:', error);
+      return false;
+    }
+
+    return true;
+  },
+
+  /**
+   * Save extracted vocabulary for a chapter
+   */
+  async saveChapterVocabulary(
+    userId: string,
+    bookId: string,
+    chapterId: string,
+    vocabulary: VocabularyItem[]
+  ): Promise<boolean> {
+    if (!supabase) return false;
+
+    const { error } = await supabase
+      .from('book_chapter_vocabulary')
+      .upsert({
+        user_id: userId,
+        book_id: bookId,
+        chapter_id: chapterId,
+        vocabulary: vocabulary,
+      }, {
+        onConflict: 'user_id,book_id,chapter_id'
+      });
+
+    if (error) {
+      console.error('Error saving chapter vocabulary:', error);
+      return false;
+    }
+
+    return true;
+  },
+
+  /**
+   * Fetch vocabulary for a chapter
+   */
+  async fetchChapterVocabulary(
+    userId: string,
+    bookId: string,
+    chapterId: string
+  ): Promise<VocabularyItem[]> {
+    if (!supabase) return [];
+
+    const { data, error } = await supabase
+      .from('book_chapter_vocabulary')
+      .select('vocabulary')
+      .eq('user_id', userId)
+      .eq('book_id', bookId)
+      .eq('chapter_id', chapterId)
+      .single();
+
+    if (error) {
+      if (error.code !== 'PGRST116') { // Not found is ok
+        console.error('Error fetching chapter vocabulary:', error);
+      }
+      return [];
+    }
+
+    return (data?.vocabulary as VocabularyItem[]) || [];
+  },
+
+  /**
+   * Mark a chapter as studied
+   */
+  async markChapterStudied(
+    userId: string,
+    bookId: string,
+    chapterId: string,
+    isStudied: boolean
+  ): Promise<boolean> {
+    if (!supabase) return false;
+
+    // Fetch current book
+    const book = await this.fetchBook(userId, bookId);
+    if (!book) return false;
+
+    // Update progress array
+    const progress = book.progress || [];
+    const existingIndex = progress.findIndex(p => p.chapterId === chapterId);
+    
+    if (existingIndex >= 0) {
+      progress[existingIndex].isStudied = isStudied;
+      progress[existingIndex].lastOpenedAt = Date.now();
+    } else {
+      progress.push({
+        chapterId,
+        isStudied,
+        vocabularyExtracted: false,
+        lastOpenedAt: Date.now(),
+      });
+    }
+
+    return this.updateBook(userId, bookId, { progress });
+  },
 };
+
+// Database row type for books
+interface DbSavedBook {
+  id: string;
+  user_id: string;
+  title: string;
+  author: string | null;
+  book_subject: string | null;
+  file_name: string;
+  page_count: number;
+  structure: BookChapter[];
+  raw_text: string;
+  page_texts: string[];
+  progress: ChapterProgress[];
+  created_at: string;
+  last_opened_at: string;
+  updated_at: string;
+}
+
+// Transform database row to app type
+const dbToBook = (row: DbSavedBook): SavedBook => ({
+  id: row.id,
+  userId: row.user_id,
+  title: row.title,
+  author: row.author || undefined,
+  bookSubject: row.book_subject || undefined,
+  fileName: row.file_name,
+  pageCount: row.page_count,
+  structure: row.structure || [],
+  rawText: row.raw_text,
+  progress: row.progress || [],
+  createdAt: new Date(row.created_at).getTime(),
+  lastOpenedAt: row.last_opened_at ? new Date(row.last_opened_at).getTime() : undefined,
+});
 
