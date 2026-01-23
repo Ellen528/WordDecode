@@ -168,7 +168,7 @@ export const extractChapterVocabulary = async (
   // Generic extraction using analyze-text
   const result = await callEdgeFunction('analyze-text', { 
     text: chapterContent,
-    sourceType: SourceType.BOOK,
+    sourceType: SourceType.ARTICLE,
     proficiency: proficiency || null,
     comprehensive: true,
     bookContext: {

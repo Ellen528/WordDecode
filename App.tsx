@@ -12,7 +12,7 @@ import Sidebar from './components/Sidebar';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { dataService } from './services/dataService';
 import { parsePDF, isPDFFile } from './services/pdfService';
-import { Sparkles, FileText, Tv, Book, Mail, Loader2, ArrowRight, AlertCircle, Upload, File as FileIcon, X, Menu, GraduationCap, Library } from 'lucide-react';
+import { Sparkles, FileText, Tv, Mic, MoreHorizontal, Loader2, ArrowRight, AlertCircle, Upload, File as FileIcon, X, Menu, GraduationCap, Library } from 'lucide-react';
 
 // Example text for quick start
 const EXAMPLE_TEXT = `While the tech giant's quarterly earnings beat expectations, the lukewarm guidance for Q4 sent shares tumbling in after-hours trading. Analysts cite saturating markets and headwinds in the supply chain as key factors dampening investor sentiment. However, bulls argue that the company's pivot to AI infrastructure is a long-term play that hasn't yet been priced in by the broader market.`;
@@ -26,7 +26,7 @@ const AppContent: React.FC = () => {
 
   // Analysis State
   const [inputText, setInputText] = useState('');
-  const [sourceType, setSourceType] = useState<SourceType>(SourceType.NEWS);
+  const [sourceType, setSourceType] = useState<SourceType>(SourceType.TV_TRANSCRIPT);
   const [fileName, setFileName] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -447,8 +447,8 @@ const AppContent: React.FC = () => {
         const result = await parsePDF(file);
         setInputText(result.text);
         setFileName(file.name);
-        // Auto-select Book Chapter source type for PDFs
-        setSourceType(SourceType.BOOK);
+        // Auto-select Article source type for PDFs
+        setSourceType(SourceType.ARTICLE);
         setError(null);
       } catch (err) {
         console.error('PDF parsing error:', err);
@@ -656,7 +656,7 @@ const AppContent: React.FC = () => {
 
   const loadExample = () => {
     setInputText(EXAMPLE_TEXT);
-    setSourceType(SourceType.NEWS);
+    setSourceType(SourceType.ARTICLE);
     setFileName(null);
   };
 
@@ -794,10 +794,10 @@ const AppContent: React.FC = () => {
                                   : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
                                   }`}
                               >
-                                {type === SourceType.NEWS && <FileText className="w-4 h-4" />}
                                 {type === SourceType.TV_TRANSCRIPT && <Tv className="w-4 h-4" />}
-                                {type === SourceType.BOOK && <Book className="w-4 h-4" />}
-                                {type === SourceType.EMAIL && <Mail className="w-4 h-4" />}
+                                {type === SourceType.PODCAST && <Mic className="w-4 h-4" />}
+                                {type === SourceType.ARTICLE && <FileText className="w-4 h-4" />}
+                                {type === SourceType.OTHERS && <MoreHorizontal className="w-4 h-4" />}
                                 <span className="hidden md:inline">{type}</span>
                                 <span className="md:hidden">{type.split(' ')[0]}</span>
                               </button>

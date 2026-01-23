@@ -1,9 +1,9 @@
 
 export enum SourceType {
-  NEWS = 'News Article',
   TV_TRANSCRIPT = 'TV Show Transcript',
-  BOOK = 'Book Chapter',
-  EMAIL = 'Professional Email'
+  PODCAST = 'Podcast',
+  ARTICLE = 'Article',
+  OTHERS = 'Others'
 }
 
 export enum AppMode {
