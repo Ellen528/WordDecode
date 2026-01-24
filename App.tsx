@@ -63,6 +63,7 @@ const AppContent: React.FC = () => {
   // Book Reader State
   const [currentBook, setCurrentBook] = useState<SavedBook | null>(null);
   const [isExtractingStructure, setIsExtractingStructure] = useState(false);
+  const [hasBooks, setHasBooks] = useState(false);
 
   const resultRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -138,10 +139,14 @@ const AppContent: React.FC = () => {
       // Record user visit
       await dataService.recordVisit(userId);
 
-      const [cloudAnalyses, cloudFolders] = await Promise.all([
+      const [cloudAnalyses, cloudFolders, books] = await Promise.all([
         dataService.fetchAnalyses(userId),
         dataService.fetchFolders(userId),
+        dataService.fetchBooks(userId),
       ]);
+      
+      // Track if user has books in library
+      setHasBooks(books.length > 0);
 
       // Merge with local data (cloud takes precedence)
       const localAnalyses = JSON.parse(localStorage.getItem('wordDecode_analysisHistory') || '[]');
@@ -874,7 +879,7 @@ const AppContent: React.FC = () => {
                     )}
 
                     {mode === AppMode.FLASHCARD_REVIEW && user && (
-                      <FlashcardReview userId={user.id} savedAnalyses={savedAnalyses} />
+                      <FlashcardReview userId={user.id} savedAnalyses={savedAnalyses} hasBooks={hasBooks} />
                     )}
 
                     {mode === AppMode.FLASHCARD_REVIEW && !user && (

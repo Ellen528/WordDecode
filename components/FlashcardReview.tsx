@@ -28,16 +28,25 @@ import {
   Sparkles,
   GraduationCap,
   BarChart3,
-  RefreshCw
+  RefreshCw,
+  FileText,
+  Library
 } from 'lucide-react';
+
+// Study source types
+type StudySource = 'text_analysis' | 'book_library';
 
 interface Props {
   userId: string;
   savedAnalyses: SavedAnalysis[];
+  hasBooks?: boolean;  // Whether user has any books in library
   onClose?: () => void;
 }
 
-const FlashcardReview: React.FC<Props> = ({ userId, savedAnalyses, onClose }) => {
+const FlashcardReview: React.FC<Props> = ({ userId, savedAnalyses, hasBooks = false, onClose }) => {
+  // Study source state
+  const [studySource, setStudySource] = useState<StudySource>('text_analysis');
+
   // Dashboard state
   const [stats, setStats] = useState<ReviewStats | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
@@ -69,10 +78,10 @@ const FlashcardReview: React.FC<Props> = ({ userId, savedAnalyses, onClose }) =>
 
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Load stats on mount
+  // Load stats on mount and when study source changes
   useEffect(() => {
     loadStats();
-  }, [userId]);
+  }, [userId, studySource]);
 
   // Focus input when card changes
   useEffect(() => {
@@ -130,37 +139,65 @@ const FlashcardReview: React.FC<Props> = ({ userId, savedAnalyses, onClose }) =>
 
   const loadStats = async () => {
     setIsLoadingStats(true);
-    const reviewStats = await dataService.getReviewStats(userId);
+    const sourceTypeFilter = studySource === 'text_analysis' ? 'text_analysis' : 'book_library';
+    const reviewStats = await dataService.getReviewStats(userId, sourceTypeFilter);
     setStats(reviewStats);
     setIsLoadingStats(false);
   };
 
-  // Sync vocabulary from saved analyses to review system
+  // Sync vocabulary from saved analyses or books to review system
   const syncVocabulary = async () => {
-    if (savedAnalyses.length === 0) {
-      setSyncMessage('No analyses found. Analyze some text first!');
-      setTimeout(() => setSyncMessage(null), 3000);
-      return;
-    }
-
-    setIsSyncing(true);
-    setSyncMessage(null);
-    
-    try {
-      const syncedCount = await dataService.syncVocabFromAnalyses(userId, savedAnalyses);
-      if (syncedCount > 0) {
-        setSyncMessage(`Synced ${syncedCount} new words!`);
-      } else {
-        setSyncMessage('All vocabulary is already synced.');
+    if (studySource === 'text_analysis') {
+      if (savedAnalyses.length === 0) {
+        setSyncMessage('No analyses found. Analyze some text first!');
+        setTimeout(() => setSyncMessage(null), 3000);
+        return;
       }
-      // Reload stats after sync
-      await loadStats();
-    } catch (error: any) {
-      console.error('Sync error:', error);
-      setSyncMessage(`Sync failed: ${error?.message || 'Unknown error. Check console for details.'}`);
-      setIsSyncing(false);
-      setTimeout(() => setSyncMessage(null), 8000); // Longer timeout for errors
-      return;
+
+      setIsSyncing(true);
+      setSyncMessage(null);
+      
+      try {
+        const syncedCount = await dataService.syncVocabFromAnalyses(userId, savedAnalyses);
+        if (syncedCount > 0) {
+          setSyncMessage(`Synced ${syncedCount} new words from text analyses!`);
+        } else {
+          setSyncMessage('All text analysis vocabulary is already synced.');
+        }
+        await loadStats();
+      } catch (error: any) {
+        console.error('Sync error:', error);
+        setSyncMessage(`Sync failed: ${error?.message || 'Unknown error. Check console for details.'}`);
+        setIsSyncing(false);
+        setTimeout(() => setSyncMessage(null), 8000);
+        return;
+      }
+    } else {
+      // Book library sync
+      if (!hasBooks) {
+        setSyncMessage('No books found. Add some books to your library first!');
+        setTimeout(() => setSyncMessage(null), 3000);
+        return;
+      }
+
+      setIsSyncing(true);
+      setSyncMessage(null);
+      
+      try {
+        const syncedCount = await dataService.syncVocabFromBooks(userId);
+        if (syncedCount > 0) {
+          setSyncMessage(`Synced ${syncedCount} new words from book library!`);
+        } else {
+          setSyncMessage('All book vocabulary is already synced.');
+        }
+        await loadStats();
+      } catch (error: any) {
+        console.error('Sync error:', error);
+        setSyncMessage(`Sync failed: ${error?.message || 'Unknown error. Check console for details.'}`);
+        setIsSyncing(false);
+        setTimeout(() => setSyncMessage(null), 8000);
+        return;
+      }
     }
     
     setIsSyncing(false);
@@ -246,29 +283,30 @@ const FlashcardReview: React.FC<Props> = ({ userId, savedAnalyses, onClose }) =>
   const startSession = async () => {
     setIsLoadingSession(true);
     
+    const sourceTypeFilter = studySource === 'text_analysis' ? 'text_analysis' : 'book_library';
     let cards: VocabularyReview[] = [];
     
     // Fetch due reviews first (priority)
     if (includeDue) {
-      const dueCards = await dataService.fetchDueReviews(userId, sessionSize);
+      const dueCards = await dataService.fetchDueReviews(userId, sessionSize, sourceTypeFilter);
       cards = [...cards, ...dueCards];
     }
     
     // If we need more cards, fetch new ones
     if (includeNew && cards.length < sessionSize) {
       const remaining = sessionSize - cards.length;
-      const newCards = await dataService.fetchNewWordsForReview(userId, remaining);
+      const newCards = await dataService.fetchNewWordsForReview(userId, remaining, sourceTypeFilter);
       cards = [...cards, ...newCards];
     }
     
     // If still not enough and we haven't included one type, try the other
     if (cards.length < sessionSize) {
       if (!includeDue) {
-        const dueCards = await dataService.fetchDueReviews(userId, sessionSize - cards.length);
+        const dueCards = await dataService.fetchDueReviews(userId, sessionSize - cards.length, sourceTypeFilter);
         cards = [...cards, ...dueCards];
       }
       if (!includeNew) {
-        const newCards = await dataService.fetchNewWordsForReview(userId, sessionSize - cards.length);
+        const newCards = await dataService.fetchNewWordsForReview(userId, sessionSize - cards.length, sourceTypeFilter);
         cards = [...cards, ...newCards];
       }
     }
@@ -278,7 +316,8 @@ const FlashcardReview: React.FC<Props> = ({ userId, savedAnalyses, onClose }) =>
     
     if (cards.length === 0) {
       setIsLoadingSession(false);
-      alert('No cards available for review. Try adding more vocabulary from your analyses!');
+      const sourceLabel = studySource === 'text_analysis' ? 'text analyses' : 'book library';
+      alert(`No cards available for review. Try adding more vocabulary from your ${sourceLabel}!`);
       return;
     }
     
@@ -391,6 +430,34 @@ const FlashcardReview: React.FC<Props> = ({ userId, savedAnalyses, onClose }) =>
           </div>
           <h1 className="text-3xl font-bold text-slate-800 mb-2">Flashcard Review</h1>
           <p className="text-slate-500">Master your vocabulary with scientifically-proven spaced repetition</p>
+          
+          {/* Study Source Selector */}
+          <div className="flex justify-center mt-6">
+            <div className="inline-flex bg-slate-100 p-1 rounded-xl">
+              <button
+                onClick={() => setStudySource('text_analysis')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  studySource === 'text_analysis'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                Text Analysis
+              </button>
+              <button
+                onClick={() => setStudySource('book_library')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  studySource === 'book_library'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <Library className="w-4 h-4" />
+                Book Library
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -439,18 +506,23 @@ const FlashcardReview: React.FC<Props> = ({ userId, savedAnalyses, onClose }) =>
               </div>
             </div>
 
-            {/* Due Today Card */}
+            {/* Reviews Due Card */}
             <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl shadow-lg p-6 mb-6 text-white">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-2">
                     <Clock className="w-5 h-5" />
-                    <span className="font-medium">Due Today</span>
+                    <span className="font-medium">Reviews Due</span>
                   </div>
-                  <div className="text-4xl font-bold">{stats.dueToday + stats.newWords}</div>
+                  <div className="text-4xl font-bold">{stats.dueToday}</div>
                   <div className="text-indigo-200 text-sm mt-1">
-                    {stats.dueToday} reviews + {stats.newWords} new
+                    Words that need to be reviewed again today
                   </div>
+                  {stats.newWords > 0 && (
+                    <div className="text-indigo-100 text-sm mt-2">
+                      + {stats.newWords} new words available to learn
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => setShowSetup(true)}
@@ -463,39 +535,68 @@ const FlashcardReview: React.FC<Props> = ({ userId, savedAnalyses, onClose }) =>
               </div>
             </div>
 
-            {/* No words message - with sync option if analyses exist */}
+            {/* No words message - with sync option if source has content */}
             {stats.totalWords === 0 && (
               <div className="bg-slate-50 rounded-2xl p-8 text-center">
                 <BookOpen className="w-12 h-12 text-slate-400 mx-auto mb-4" />
                 <h3 className="text-lg font-bold text-slate-700 mb-2">No vocabulary yet</h3>
-                {savedAnalyses.length > 0 ? (
-                  <>
-                    <p className="text-slate-500 mb-4">
-                      You have {savedAnalyses.length} saved {savedAnalyses.length === 1 ? 'analysis' : 'analyses'} with vocabulary ready to sync.
+                {studySource === 'text_analysis' ? (
+                  savedAnalyses.length > 0 ? (
+                    <>
+                      <p className="text-slate-500 mb-4">
+                        You have {savedAnalyses.length} saved {savedAnalyses.length === 1 ? 'analysis' : 'analyses'} with vocabulary ready to sync.
+                      </p>
+                      <button
+                        onClick={syncVocabulary}
+                        disabled={isSyncing}
+                        className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                      >
+                        {isSyncing ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-5 h-5" />
+                        )}
+                        Sync Vocabulary Now
+                      </button>
+                    </>
+                  ) : (
+                    <p className="text-slate-500">
+                      Analyze some text first to build your vocabulary, then come back to review!
                     </p>
-                    <button
-                      onClick={syncVocabulary}
-                      disabled={isSyncing}
-                      className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                    >
-                      {isSyncing ? (
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                      ) : (
-                        <RefreshCw className="w-5 h-5" />
-                      )}
-                      Sync Vocabulary Now
-                    </button>
-                  </>
+                  )
                 ) : (
-                  <p className="text-slate-500">
-                    Analyze some text first to build your vocabulary, then come back to review!
-                  </p>
+                  hasBooks ? (
+                    <>
+                      <p className="text-slate-500 mb-4">
+                        You have books in your library with vocabulary ready to sync.
+                      </p>
+                      <button
+                        onClick={syncVocabulary}
+                        disabled={isSyncing}
+                        className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                      >
+                        {isSyncing ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-5 h-5" />
+                        )}
+                        Sync Book Vocabulary Now
+                      </button>
+                    </>
+                  ) : (
+                    <p className="text-slate-500">
+                      Add some books to your library and extract vocabulary first!
+                    </p>
+                  )
                 )}
               </div>
             )}
 
             {/* Sync button when words exist */}
-            {stats.totalWords > 0 && savedAnalyses.length > 0 && (
+            {stats.totalWords > 0 && (
+              (studySource === 'text_analysis' && savedAnalyses.length > 0) ||
+              (studySource === 'book_library' && hasBooks)
+            ) && (
               <div className="flex justify-center mt-4">
                 <button
                   onClick={syncVocabulary}
@@ -507,7 +608,9 @@ const FlashcardReview: React.FC<Props> = ({ userId, savedAnalyses, onClose }) =>
                   ) : (
                     <RefreshCw className="w-4 h-4" />
                   )}
-                  Sync new vocabulary from history
+                  {studySource === 'text_analysis' 
+                    ? 'Sync new vocabulary from text analyses' 
+                    : 'Sync new vocabulary from book library'}
                 </button>
               </div>
             )}

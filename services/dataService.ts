@@ -663,7 +663,7 @@ export const dataService = {
   /**
    * Fetch reviews that are due for review (not suspended, next_review_date <= today)
    */
-  async fetchDueReviews(userId: string, limit?: number): Promise<VocabularyReview[]> {
+  async fetchDueReviews(userId: string, limit?: number, sourceType?: string): Promise<VocabularyReview[]> {
     if (!supabase) return [];
 
     const today = new Date();
@@ -677,6 +677,10 @@ export const dataService = {
       .lte('next_review_date', today.toISOString())
       .gt('repetitions', 0) // Has been reviewed at least once
       .order('next_review_date', { ascending: true });
+
+    if (sourceType) {
+      query = query.eq('source_type', sourceType);
+    }
 
     if (limit) {
       query = query.limit(limit);
@@ -695,7 +699,7 @@ export const dataService = {
   /**
    * Fetch new words (never reviewed) for review
    */
-  async fetchNewWordsForReview(userId: string, limit?: number): Promise<VocabularyReview[]> {
+  async fetchNewWordsForReview(userId: string, limit?: number, sourceType?: string): Promise<VocabularyReview[]> {
     if (!supabase) return [];
 
     let query = supabase
@@ -705,6 +709,10 @@ export const dataService = {
       .eq('is_suspended', false)
       .eq('repetitions', 0) // Never reviewed
       .order('created_at', { ascending: true });
+
+    if (sourceType) {
+      query = query.eq('source_type', sourceType);
+    }
 
     if (limit) {
       query = query.limit(limit);
@@ -723,7 +731,7 @@ export const dataService = {
   /**
    * Get review statistics for the dashboard
    */
-  async getReviewStats(userId: string): Promise<ReviewStats> {
+  async getReviewStats(userId: string, sourceType?: string): Promise<ReviewStats> {
     if (!supabase) {
       return {
         totalWords: 0,
@@ -739,11 +747,17 @@ export const dataService = {
     const today = new Date();
     today.setHours(23, 59, 59, 999);
 
-    // Fetch all reviews for the user
-    const { data, error } = await supabase
+    // Fetch all reviews for the user (optionally filtered by source type)
+    let query = supabase
       .from('vocabulary_reviews')
       .select('is_suspended, is_mastered, repetitions, next_review_date')
       .eq('user_id', userId);
+
+    if (sourceType) {
+      query = query.eq('source_type', sourceType);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching review stats:', error);
@@ -766,6 +780,7 @@ export const dataService = {
     const learningWords = reviews.filter(r => r.repetitions > 0 && !r.is_mastered && !r.is_suspended).length;
     const dueToday = reviews.filter(r => {
       if (r.is_suspended) return false;
+      if (r.repetitions === 0) return false; // New words are not "due" - they're new
       const reviewDate = new Date(r.next_review_date);
       return reviewDate <= today;
     }).length;
@@ -933,11 +948,12 @@ export const dataService = {
       return 0;
     }
 
-    // Get existing terms
+    // Get existing terms for text_analysis source only
     const { data: existingData, error: fetchError } = await supabase
       .from('vocabulary_reviews')
       .select('term')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .eq('source_type', 'text_analysis');
 
     if (fetchError) {
       console.error('syncVocabFromAnalyses: Error fetching existing terms:', fetchError);
@@ -945,7 +961,7 @@ export const dataService = {
     }
 
     const existingTerms = new Set((existingData || []).map(r => r.term.toLowerCase()));
-    console.log(`syncVocabFromAnalyses: Found ${existingTerms.size} existing terms`);
+    console.log(`syncVocabFromAnalyses: Found ${existingTerms.size} existing text_analysis terms`);
 
     // Collect all new vocabulary items - WITHOUT source_analysis_id foreign key constraint
     const newReviews: Array<{
@@ -966,6 +982,7 @@ export const dataService = {
       examples: object | null;
       imagery_etymology: string | null;
       difficulty_level: string | null;
+      source_type: string;
     }> = [];
 
     // Sort analyses by date ascending (oldest first) so older vocab gets earlier created_at
@@ -1004,6 +1021,7 @@ export const dataService = {
           examples: vocab.examples || null,
           imagery_etymology: vocab.imagery_etymology || null,
           difficulty_level: vocab.difficulty_level || null,
+          source_type: 'text_analysis',
         });
       }
     }
@@ -1036,6 +1054,147 @@ export const dataService = {
     }
 
     console.log(`Synced ${insertedCount} new vocabulary items to review system`);
+    return insertedCount;
+  },
+
+  /**
+   * Sync vocabulary from book library to the review system
+   */
+  async syncVocabFromBooks(userId: string): Promise<number> {
+    if (!supabase) {
+      console.log('syncVocabFromBooks: No supabase');
+      return 0;
+    }
+
+    console.log(`syncVocabFromBooks: Fetching book vocabulary for user ${userId}`);
+
+    // Fetch all book chapter vocabulary for this user
+    const { data: bookVocabData, error: fetchBookError } = await supabase
+      .from('book_chapter_vocabulary')
+      .select('vocabulary, book_id, chapter_id')
+      .eq('user_id', userId);
+
+    if (fetchBookError) {
+      console.error('syncVocabFromBooks: Error fetching book vocabulary:', fetchBookError);
+      throw fetchBookError;
+    }
+
+    if (!bookVocabData || bookVocabData.length === 0) {
+      console.log('syncVocabFromBooks: No book vocabulary found');
+      return 0;
+    }
+
+    // Count total vocabulary
+    let totalVocab = 0;
+    for (const row of bookVocabData) {
+      totalVocab += (row.vocabulary as VocabularyItem[])?.length || 0;
+    }
+    console.log(`syncVocabFromBooks: Total vocabulary items in books: ${totalVocab}`);
+
+    if (totalVocab === 0) return 0;
+
+    // Get existing terms for book_library source only
+    const { data: existingData, error: existingError } = await supabase
+      .from('vocabulary_reviews')
+      .select('term')
+      .eq('user_id', userId)
+      .eq('source_type', 'book_library');
+
+    if (existingError) {
+      console.error('syncVocabFromBooks: Error fetching existing terms:', existingError);
+      throw existingError;
+    }
+
+    const existingTerms = new Set((existingData || []).map(r => r.term.toLowerCase()));
+    console.log(`syncVocabFromBooks: Found ${existingTerms.size} existing book_library terms`);
+
+    // Collect new vocabulary items
+    const newReviews: Array<{
+      user_id: string;
+      term: string;
+      definition: string;
+      ease_factor: number;
+      interval: number;
+      repetitions: number;
+      next_review_date: string;
+      created_at: string;
+      is_suspended: boolean;
+      is_mastered: boolean;
+      correct_count: number;
+      incorrect_count: number;
+      category: string | null;
+      source_context: string | null;
+      examples: object | null;
+      imagery_etymology: string | null;
+      difficulty_level: string | null;
+      source_type: string;
+    }> = [];
+
+    const now = new Date();
+
+    for (const row of bookVocabData) {
+      const vocabItems = row.vocabulary as VocabularyItem[];
+      if (!vocabItems) continue;
+
+      for (const vocab of vocabItems) {
+        if (!vocab.term || !vocab.definition) continue;
+        
+        // Skip if already exists (case-insensitive)
+        if (existingTerms.has(vocab.term.toLowerCase())) continue;
+
+        // Mark as added to avoid duplicates in this batch
+        existingTerms.add(vocab.term.toLowerCase());
+
+        newReviews.push({
+          user_id: userId,
+          term: vocab.term,
+          definition: vocab.definition,
+          ease_factor: 2.5,
+          interval: 0,
+          repetitions: 0,
+          next_review_date: now.toISOString(),
+          created_at: now.toISOString(),
+          is_suspended: false,
+          is_mastered: false,
+          correct_count: 0,
+          incorrect_count: 0,
+          category: vocab.category || null,
+          source_context: vocab.source_context || null,
+          examples: vocab.examples || null,
+          imagery_etymology: vocab.imagery_etymology || null,
+          difficulty_level: vocab.difficulty_level || null,
+          source_type: 'book_library',
+        });
+      }
+    }
+
+    console.log(`syncVocabFromBooks: ${newReviews.length} new terms to insert`);
+
+    if (newReviews.length === 0) return 0;
+
+    // Insert in batches of 100
+    const batchSize = 100;
+    let insertedCount = 0;
+
+    for (let i = 0; i < newReviews.length; i += batchSize) {
+      const batch = newReviews.slice(i, i + batchSize);
+      console.log(`syncVocabFromBooks: Inserting batch ${i / batchSize + 1}, size: ${batch.length}`);
+      
+      const { data, error } = await supabase
+        .from('vocabulary_reviews')
+        .insert(batch)
+        .select();
+
+      if (error) {
+        console.error('Error syncing book vocabulary batch:', error);
+        throw new Error(`Failed to sync book vocabulary: ${error.message}`);
+      } else {
+        console.log(`syncVocabFromBooks: Successfully inserted ${data?.length || batch.length} items`);
+        insertedCount += data?.length || batch.length;
+      }
+    }
+
+    console.log(`Synced ${insertedCount} new book vocabulary items to review system`);
     return insertedCount;
   },
 
