@@ -9,7 +9,9 @@ import {
   CheckCircle2, 
   Circle,
   BookOpen,
-  Sparkles
+  Sparkles,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 import ChapterView from './ChapterView';
 
@@ -71,6 +73,7 @@ const BookCatalog: React.FC<BookCatalogProps> = ({
   const [selectedChapter, setSelectedChapter] = useState<BookChapter | null>(null);
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
   const [chapterVocabulary, setChapterVocabulary] = useState<VocabularyItem[]>([]);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Update last opened when component mounts
   useEffect(() => {
@@ -285,64 +288,98 @@ const BookCatalog: React.FC<BookCatalogProps> = ({
 
   return (
     <div className="flex h-full bg-white">
-      {/* Sidebar - Table of Contents */}
-      <div className="w-80 border-r border-slate-200 flex flex-col bg-slate-50">
-        {/* Header */}
-        <div className="p-4 border-b border-slate-200 bg-white">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-2 text-slate-500 hover:text-slate-700 mb-3"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="text-sm">Back to Library</span>
-          </button>
-          
-          <div className="flex items-start gap-3">
-            <div className="p-2 bg-emerald-100 rounded-lg">
-              <Book className="w-6 h-6 text-emerald-600" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h2 className="font-bold text-slate-800 truncate">{book.title}</h2>
-              {book.author && (
-                <p className="text-sm text-slate-500 truncate">{book.author}</p>
-              )}
-              {book.bookSubject && (
-                <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" />
-                  {book.bookSubject}
-                </p>
-              )}
-            </div>
+      {/* Sidebar - Table of Contents (Collapsible) */}
+      <div className={`
+        border-r border-slate-200 flex flex-col bg-slate-50 transition-all duration-300
+        ${isSidebarCollapsed ? 'w-12' : 'w-80'}
+      `}>
+        {/* Collapsed State - Just show expand button */}
+        {isSidebarCollapsed ? (
+          <div className="flex flex-col h-full">
+            <button
+              onClick={() => setIsSidebarCollapsed(false)}
+              className="p-3 hover:bg-slate-100 border-b border-slate-200"
+              title="Show chapters"
+            >
+              <PanelLeftOpen className="w-5 h-5 text-slate-500" />
+            </button>
+            <button
+              onClick={onBack}
+              className="p-3 hover:bg-slate-100"
+              title="Back to Library"
+            >
+              <ArrowLeft className="w-5 h-5 text-slate-500" />
+            </button>
           </div>
+        ) : (
+          <>
+            {/* Header */}
+            <div className="p-4 border-b border-slate-200 bg-white">
+              <div className="flex items-center justify-between mb-3">
+                <button
+                  onClick={onBack}
+                  className="flex items-center gap-2 text-slate-500 hover:text-slate-700"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span className="text-sm">Back to Library</span>
+                </button>
+                <button
+                  onClick={() => setIsSidebarCollapsed(true)}
+                  className="p-1.5 hover:bg-slate-100 rounded-lg"
+                  title="Hide chapters"
+                >
+                  <PanelLeftClose className="w-4 h-4 text-slate-400" />
+                </button>
+              </div>
+              
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-emerald-100 rounded-lg">
+                  <Book className="w-6 h-6 text-emerald-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h2 className="font-bold text-slate-800 truncate">{book.title}</h2>
+                  {book.author && (
+                    <p className="text-sm text-slate-500 truncate">{book.author}</p>
+                  )}
+                  {book.bookSubject && (
+                    <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" />
+                      {book.bookSubject}
+                    </p>
+                  )}
+                </div>
+              </div>
 
-          {/* Progress */}
-          <div className="mt-4">
-            <div className="flex items-center justify-between text-xs mb-1">
-              <span className="text-slate-500">
-                {progress.studied} of {progress.total} chapters
-              </span>
-              <span className="font-medium text-emerald-600">{progress.percentage}%</span>
+              {/* Progress */}
+              <div className="mt-4">
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className="text-slate-500">
+                    {progress.studied} of {progress.total} chapters
+                  </span>
+                  <span className="font-medium text-emerald-600">{progress.percentage}%</span>
+                </div>
+                <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-emerald-500 rounded-full transition-all"
+                    style={{ width: `${progress.percentage}%` }}
+                  />
+                </div>
+              </div>
             </div>
-            <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-emerald-500 rounded-full transition-all"
-                style={{ width: `${progress.percentage}%` }}
-              />
-            </div>
-          </div>
-        </div>
 
-        {/* Chapter List */}
-        <div className="flex-1 overflow-y-auto p-2">
-          {fixedStructure.length > 0 ? (
-            renderChapterTree(fixedStructure)
-          ) : (
-            <div className="text-center py-8 text-slate-400">
-              <BookOpen className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No chapters found</p>
+            {/* Chapter List */}
+            <div className="flex-1 overflow-y-auto p-2">
+              {fixedStructure.length > 0 ? (
+                renderChapterTree(fixedStructure)
+              ) : (
+                <div className="text-center py-8 text-slate-400">
+                  <BookOpen className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No chapters found</p>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
 
       {/* Main Content Area */}
